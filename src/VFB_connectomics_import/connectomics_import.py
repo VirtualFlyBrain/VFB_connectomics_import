@@ -6,41 +6,39 @@ from neuprint import fetch_adjacencies, NeuronCriteria, fetch_simple_connections
 import pandas as pd
 from vfb_connect.cross_server_tools import VfbConnect
 
-#function fetches neuron-neuron connectivity and returns pre, post, and weight. Default cypher is for neurons with types
-def fetch_total_connectivity(cypher="""MATCH (n:hemibrain_Neuron) WHERE exists(n.type) RETURN n.bodyId as ID"""):
-    # define neuprint API token variable from .env (located in src)
-    env_path='/Users/alexmclachlan/Documents/GitHub/VFB_connectomics_import/src/.env.txt'
-    load_dotenv(dotenv_path=env_path)
-    token = os.getenv('neuPRINT_API_token')
-    #login to neuprint
-    client = neuprint.Client('https://neuprint.janelia.org', dataset='hemibrain:v1.1', token=token)
-    client.fetch_version()
-    #fetch body ids of only neurons with types
-    neur_ids = client.fetch_custom(cypher)
-    #fetch neuron-neuron connectivity for only the filtered neurons within PRIMARY rois only and collapse rois to total
-    neuron_df, conn_df = fetch_adjacencies(sources=neur_ids['ID'][0], targets=neur_ids['ID'])
-    conn_df=conn_df.groupby(['bodyId_pre', 'bodyId_post'], as_index=False)['weight'].sum()
-    vc=VfbConnect()
-    return vc.neo_query_wrapper.get_terms_by_xref([neur_ids[1]], db='neuprint_JRC_Hemibrain_1point1')
+class ConnectomicsImport:
+    def __init__(self, neuprint_endpoint=None, neuprint_dataset=None, neuprint_token=None):
+        self.vc=VfbConnect()
+        if neuprint_endpoint and neuprint_dataset and neuprint_token:
+            self.neuprint_client=neuprint.Client(neuprint_endpoint, dataset=neuprint_dataset, token=neuprint_token)
+        else: self.neuprint_client=None
+
+    def get_adjencies(self, accessions, testmode=False):
+        # fetch body ids of only neurons with types
+        neur_ids = self.neuprint_client
+        # fetch neuron-neuron connectivity for only the filtered neurons within PRIMARY rois only and collapse rois to total
+        neuron_df, conn_df = fetch_adjacencies(sources=neur_ids['ID'], targets=neur_ids['ID'])
+        conn_df = conn_df.groupby(['bodyId_pre', 'bodyId_post'], as_index=False)['weight'].sum()
+        return conn_df#add to stack? in wrapper
+
+    def generate_template(self, dataset):
+        vfb_ids_list = self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).items()#dictionary comprhension, key first pos (accession) value VFB_id
+        seed = { "ID": "ID", "FACT": "I  'synapsed to' %", "Weight": "^A n2o:weight",  "Weight": "^A n2o:weight_per_roi" }
+        records = [seed]
+        #map lambda function cast
 
 
-env_path='/Users/alexmclachlan/Documents/GitHub/VFB_connectomics_import/src/.env.txt'
-load_dotenv(dotenv_path=env_path)
-token = os.getenv('neuPRINT_API_token')
-#login to neuprint
-client = neuprint.Client('https://neuprint.janelia.org', dataset='hemibrain:v1.1', token=token)
-client.fetch_version()
+#pull from neuprint function
+#catmaid/neuprint
+#runner script argparse to parse variables
+
+
 #fetch body ids of only neurons with types
 neur_ids = client.fetch_custom("""MATCH (n:hemibrain_Neuron) WHERE exists(n.type) RETURN n.bodyId as ID""")
 #fetch neuron-neuron connectivity for only the filtered neurons within PRIMARY rois only and collapse rois to total
-neuron_df, conn_df = fetch_adjacencies(sources=neur_ids['ID'][0], targets=neur_ids['ID'])
-conn_df=conn_df.groupby(['bodyId_pre', 'bodyId_post'], as_index=False)['weight'].sum()
 vc=VfbConnect()
-vfb_id_list=list(vc.neo_query_wrapper.xref_2_vfb_id(db='neuprint_JRC_Hemibrain_1point1').items())
+vfb_ids_list=list(vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).items())
 
-vfb_ids=pd.DataFrame(vfb_id_list)
-
-[1][0]['vfb_id']
 
 
 
