@@ -35,7 +35,7 @@ conn_df.rename(columns={'bodyId_pre': 'ID', 'bodyId_post': 'FACT', 'weight': 'We
 conn_df['ID']=conn_df['ID'].str.replace('_', ':')
 conn_df['FACT']=conn_df['FACT'].str.replace('_', ':')
 robot_template_df
-robot_template_df.to_csv('Robot_template.tsv', sep='\t', index=False)
+conn_df.to_csv('Robot_template.tsv', sep='\t', index=False)
 
 #pull from neuprint function
 #catmaid/neuprint
