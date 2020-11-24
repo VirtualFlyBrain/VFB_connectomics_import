@@ -13,32 +13,30 @@ class ConnectomicsImport:
             self.neuprint_client=neuprint.Client(neuprint_endpoint, dataset=neuprint_dataset, token=neuprint_token)
         else: self.neuprint_client=None
 
-    def get_adjencies(self, accessions, testmode=False):
+    def get_adjacencies(self, accessions, testmode=False):# add testmode
         # fetch body ids of only neurons with types
-        neur_ids = self.neuprint_client
+        neur_ids = accessions
         # fetch neuron-neuron connectivity for only the filtered neurons within PRIMARY rois only and collapse rois to total
-        neuron_df, conn_df = fetch_adjacencies(sources=neur_ids['ID'], targets=neur_ids['ID'])
+        neuron_df, conn_df = fetch_adjacencies(sources=accessions, targets=accessions)
         conn_df = conn_df.groupby(['bodyId_pre', 'bodyId_post'], as_index=False)['weight'].sum()
         return conn_df#add to stack? in wrapper
 
     def generate_template(self, dataset):
-        vfb_ids_list = self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).items()#dictionary comprhension, key first pos (accession) value VFB_id
-        seed = { "ID": "ID", "FACT": "I  'synapsed to' %", "Weight": "^A n2o:weight",  "Weight": "^A n2o:weight_per_roi" }
-        records = [seed]
-        #map lambda function cast
+        vfb_ids = self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).items()#dictionary comprehension, key first pos (accession) value VFB_id
 
+
+vc=VfbConnect()
+vfb_ids = vc.neo_query_wrapper.xref_2_vfb_id(db='neuprint_JRC_Hemibrain_1point1')
+vfb_ids = {k:v[0]['vfb_id'] for (k,v) in vfb_ids.items()}
+conn_df = conn_df.applymap(str)
+conn_df['bodyId_pre']=conn_df['bodyId_pre'].map(vfb_ids)
+conn_df['bodyId_post']=conn_df['bodyId_post'].map(vfb_ids)
+conn_df.rename(columns={'bodyId_pre': 'ID', 'bodyId_post': 'FACT', 'weight': 'Weight'}, inplace=True)
+conn_df['ID']=conn_df['ID'].str.replace('_', ':')
+conn_df['FACT']=conn_df['FACT'].str.replace('_', ':')
+robot_template_df
+robot_template_df.to_csv('Robot_template.tsv', sep='\t', index=False)
 
 #pull from neuprint function
 #catmaid/neuprint
-#runner script argparse to parse variables
-
-
-#fetch body ids of only neurons with types
-neur_ids = client.fetch_custom("""MATCH (n:hemibrain_Neuron) WHERE exists(n.type) RETURN n.bodyId as ID""")
-#fetch neuron-neuron connectivity for only the filtered neurons within PRIMARY rois only and collapse rois to total
-vc=VfbConnect()
-vfb_ids_list=list(vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).items())
-
-
-
 
