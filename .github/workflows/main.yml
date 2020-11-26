@@ -31,7 +31,7 @@ jobs:
         chmod +x $HOME/robot && chmod +x $HOME/robot.jar
     - name: Import neuprint connectome
       run: |
-        cd $GITHUB_WORKSPACE/src
+        cd $GITHUB_WORKSPACE/src/VFB_connectomics_import
         python script_runner.py
     - name: Robot
       run: |
