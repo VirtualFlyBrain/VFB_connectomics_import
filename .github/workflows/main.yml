@@ -22,10 +22,10 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Get Robot
       run: |
-        export ROBOT v1.6.0
-        export ROBOT_ARGS -Xmx20G
+        export ROBOT=v1.6.0
+        export ROBOT_ARGS=-Xmx20G
         export ROBOT_JAR=https://github.com/ontodev/robot/releases/download/$ROBOT/robot.jar
-        export ROBOT_JAR ${ROBOT_JAR}
+        export ROBOT_JAR=${ROBOT_JAR}
         wget $ROBOT_JAR -O $HOME/robot.jar
         wget https://raw.githubusercontent.com/ontodev/robot/$ROBOT/bin/robot -O $HOME/robot
         chmod +x $HOME/robot && chmod +x $HOME/robot.jar
