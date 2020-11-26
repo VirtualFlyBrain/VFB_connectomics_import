@@ -25,6 +25,10 @@ class ConnectomicsImport:
         vfb_ids = self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).items()#dictionary comprehension, key first pos (accession) value VFB_id
 
 
+
+#pull from vfb connect accessions > then to neuprint or catmaid depending, match catmaid to neuprint (neuprint or catmaid arg)/ CATMIAD runner, neuprint runner.
+#args for both should stay the same
+
 vc=VfbConnect()
 vfb_ids = vc.neo_query_wrapper.xref_2_vfb_id(db='neuprint_JRC_Hemibrain_1point1')
 vfb_ids = {k:v[0]['vfb_id'] for (k,v) in vfb_ids.items()}
@@ -34,7 +38,8 @@ conn_df['bodyId_post']=conn_df['bodyId_post'].map(vfb_ids)
 conn_df.rename(columns={'bodyId_pre': 'ID', 'bodyId_post': 'FACT', 'weight': 'Weight'}, inplace=True)
 conn_df['ID']=conn_df['ID'].str.replace('_', ':')
 conn_df['FACT']=conn_df['FACT'].str.replace('_', ':')
-robot_template_df
+robot_template_df=pd.DataFrame({'ID':['ID'], 'FACT':["I 'synapsed to' %"], 'Weight':['^A n2o:weight']})
+
 conn_df.to_csv('Robot_template.tsv', sep='\t', index=False)
 
 #pull from neuprint function
