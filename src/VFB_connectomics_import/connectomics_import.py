@@ -1,8 +1,6 @@
-from dotenv import load_dotenv
-import os
 import neuprint
 from neuprint import Client
-from neuprint import fetch_adjacencies, NeuronCriteria, fetch_simple_connections
+from neuprint import fetch_adjacencies
 import pandas as pd
 from vfb_connect.cross_server_tools import VfbConnect
 
