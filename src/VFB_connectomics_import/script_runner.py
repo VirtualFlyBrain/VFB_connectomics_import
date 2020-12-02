@@ -8,7 +8,7 @@ ci=ConnectomicsImport(neuprint_endpoint='https://neuprint.janelia.org',
 
 accessions=ci.get_accessions_from_vfb('neuprint_JRC_Hemibrain_1point1')
 
-conn_df=ci.get_adjacencies_neuprint(accessions=accessions[0:100])
+conn_df=ci.get_adjacencies_neuprint(accessions=accessions)
 
 robot_template_df=ci.generate_template('neuprint_JRC_Hemibrain_1point1', conn_df)
 

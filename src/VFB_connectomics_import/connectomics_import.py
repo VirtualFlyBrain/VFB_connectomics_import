@@ -22,6 +22,7 @@ class ConnectomicsImport:
         return conn_df#add to stack? in wrapper
 
     def generate_template(self, dataset, conn_df):
+        robot_template_df=pd.DataFrame({'ID': ['ID'], 'TYPE': ['Type'], 'FACT': ["I 'synapsed to'"], 'Weight': ['>AT n2o:weight^^xsd:integer']})
         vfb_ids = self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).items()
         vfb_ids = {k: v[0]['vfb_id'] for (k, v) in vfb_ids}
         conn_df = conn_df.applymap(str)
@@ -30,11 +31,11 @@ class ConnectomicsImport:
         conn_df.rename(columns={'bodyId_pre': 'ID', 'bodyId_post': 'FACT', 'weight': 'Weight'}, inplace=True)
         conn_df['ID']=conn_df['ID'].str.replace('_', ':')
         conn_df['FACT']=conn_df['FACT'].str.replace('_', ':')
-        return conn_df
+        conn_df['TYPE']='owl:NamedIndividual'
+        robot_template_df=robot_template_df.append(conn_df)
+        return robot_template_df
 
 
 
 #TODO pull from vfb connect accessions > then to neuprint or catmaid depending, match catmaid to neuprint (neuprint or catmaid arg)/ CATMIAD runner, neuprint runner.
 #TODO args for both should stay the same
-
-
