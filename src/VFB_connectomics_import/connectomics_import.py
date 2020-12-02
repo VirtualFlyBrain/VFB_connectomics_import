@@ -10,15 +10,18 @@ class ConnectomicsImport:
         if neuprint_endpoint and neuprint_dataset and neuprint_token:
             self.neuprint_client=neuprint.Client(neuprint_endpoint, dataset=neuprint_dataset, token=neuprint_token)
         else: self.neuprint_client=None
+        #self.accessions=get_accessiosn_from_vfb
 
     def get_accessions_from_vfb(self, dataset):
         accessions = list(map(int, self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).keys()))
-        return accessions
+        return accessions #call function
 
-    def get_adjacencies_neuprint(self, accessions, testmode=False):# add testmode, generalise?
-        # fetch neuron-neuron connectivity for only the filtered neurons within PRIMARY rois only and collapse rois to total
+    def get_adjacencies_neuprint(self, accessions, threshold=1, testmode=False):# add testmode, generalise?
+        #fetch neuron-neuron connectivity for only the filtered neurons within PRIMARY rois only and collapse rois to total
         neuron_df, conn_df = fetch_adjacencies(sources=accessions, targets=accessions)
         conn_df = conn_df.groupby(['bodyId_pre', 'bodyId_post'], as_index=False)['weight'].sum()
+        #filter by synapse count threshold (using total neuron-neuron connectivity in whole brain
+        conn_df = conn_df[conn_df.weight > threshold]
         return conn_df#add to stack? in wrapper
 
     def generate_template(self, dataset, conn_df):
