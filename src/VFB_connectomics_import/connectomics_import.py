@@ -3,6 +3,7 @@ from neuprint import Client
 from neuprint import fetch_adjacencies
 import pandas as pd
 from vfb_connect.cross_server_tools import VfbConnect
+#from vfb_connect.cross_server_tools import VfbConnect
 
 class ConnectomicsImport:
     def __init__(self, neuprint_endpoint=None, neuprint_dataset=None, neuprint_token=None):
