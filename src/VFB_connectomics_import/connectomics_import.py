@@ -3,14 +3,16 @@ from neuprint import Client
 from neuprint import fetch_adjacencies
 import pandas as pd
 from vfb_connect.cross_server_tools import VfbConnect
-#from vfb_connect.cross_server_tools import VfbConnect
+import pymaid
 
 class ConnectomicsImport:
     def __init__(self, neuprint_endpoint=None, neuprint_dataset=None, neuprint_token=None):
         self.vc=VfbConnect()
         if neuprint_endpoint and neuprint_dataset and neuprint_token:
             self.neuprint_client=neuprint.Client(neuprint_endpoint, dataset=neuprint_dataset, token=neuprint_token)
+            #catmaid client?
         else: self.neuprint_client=None
+
         #self.accessions=get_accessiosn_from_vfb
 
     def get_accessions_from_vfb(self, dataset):
@@ -24,6 +26,12 @@ class ConnectomicsImport:
         #filter by synapse count threshold (using total neuron-neuron connectivity in whole brain
         conn_df = conn_df[conn_df.weight > threshold]
         return conn_df#add to stack? in wrapper
+
+    def get_adjacencies_CATMAID(selfself, accessions, threshold=1):
+        rm = pymaid.CatmaidInstance('https://fafb.catmaid.virtualflybrain.org/', '', '', '')
+        pns = pymaid.get_skids_by_annotation('Paper: Bates and Schlegel et al 2020')
+        cn_table = pymaid.get_edges(pns)
+        cn_table.head()
 
     def generate_template(self, dataset, conn_df):
         robot_template_df=pd.DataFrame({'ID': ['ID'], 'TYPE': ['Type'], 'FACT': ["I 'synapsed to'"], 'Weight': ['>AT n2o:weight^^xsd:integer']})
