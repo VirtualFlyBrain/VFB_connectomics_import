@@ -8,6 +8,7 @@ parser.add_argument('--neuprint_dataset', '-n_d', type=str, help='NeuPrint datas
 parser.add_argument('--neuprint_token', '-n_t', type=str, help='NeuPrint auth token string')
 parser.add_argument('--threshold', '-t', type=int, help='Neuron-neuron connections which are not greater than this integer will be omitted')
 parser.add_argument('--dataset', '-d', type=str, help='VFB dataset string')
+parser.add_argument('--catmaid_endpoint', '-c_e', type=str, help='CATMAID endpoint URL string (see VFB website for public CATMAID servers')
 #add catmaid/neuprint as arg
 args = vars(parser.parse_args())
 
@@ -17,16 +18,28 @@ neuprint_dataset = args['neuprint_dataset']
 neuprint_token = args['neuprint_token']
 threshold = args['threshold']
 dataset = args['dataset']
+catmaid_endpoint = args['catmaid_endpoint']
 
-
+neuprint_endpoint = 'https://neuprint.janelia.org'
+neuprint_dataset = 'hemibrain:v1.1'
+neuprint_token = ''
+threshold = 1
+dataset = 'neuprint_JRC_Hemibrain_1point1'
+dataset = 'catmaid_fafb'
+catmaid_endpoint = 'https://fafb.catmaid.virtualflybrain.org/'
 
 ci=ConnectomicsImport(neuprint_endpoint=neuprint_endpoint,
                       neuprint_dataset=neuprint_dataset,
-                      neuprint_token=neuprint_token)
+                      neuprint_token=neuprint_token,
+                      catmaid_endpoint=catmaid_endpoint)
 
 accessions=ci.get_accessions_from_vfb(dataset)
 
 conn_df=ci.get_adjacencies_neuprint(accessions=accessions[0:100], threshold=threshold)
+
+
+rm=pymaid.CatmaidInstance(catmaid_endpoint, '', '', '')
+conn_df=pymaid.get_edges(accessions)
 
 robot_template_df=ci.generate_template(dataset, conn_df)
 
