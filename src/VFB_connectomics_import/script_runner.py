@@ -41,7 +41,7 @@ conn_df=ci.get_adjacencies_neuprint(accessions=accessions[0:100], threshold=thre
 rm=pymaid.CatmaidInstance(catmaid_endpoint, '', '', '')
 conn_df=pymaid.get_edges(accessions)
 
-robot_template_df=ci.generate_template(dataset, conn_df)
+robot_template_df=ci.generate_n_n_template(dataset, conn_df)
 
 robot_template_df.to_csv('Robot_template.tsv', sep='\t', index=False)
 # dataset_template

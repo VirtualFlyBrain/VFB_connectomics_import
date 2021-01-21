@@ -32,7 +32,21 @@ class ConnectomicsImport:
         conn_df = pymaid.get_edges(accessions)
         return conn_df
 
-    def generate_template(self, dataset, conn_df):
+#    def get_regions_CATMAID(self, accessions): #TODO add threshold, volumes?
+#       volume=pymaid.get_volume('FAFB volume name') [use pymaid.get_volume() to get list]
+#       adj=pymaid.adjacency_matrix(accessions, volume_filter=volume)
+#       adj['output_syn']=adj.sum(axis=0)
+#       adj.loc['input_syn'] = adj.sum(axis=1)
+#       output_sum = pd.DataFrame(adj['output_syn'])
+#       output_sum['ID'] = output_sum.index
+#       input_sum = pd.DataFrame(adj.loc['input_syn'])
+#       input_sum['ID'] = input_sum.index
+#       adj_sum[(adj.T != 0).any()] #not quite working though, some 0 getting through
+#       in_out_region = input_sum.merge(output_sum, how='outer', on='')
+#
+#       TODO need to convert per region adjacency matrices to template rows somehow. Is this the best way to do this, I'm pretty sure could work but slow?
+
+    def generate_n_n_template(self, dataset, conn_df):
         robot_template_df=pd.DataFrame({'ID': ['ID'], 'TYPE': ['Type'], 'FACT': ["I 'synapsed to'"], 'Weight': ['>AT n2o:weight^^xsd:integer']})
         vfb_ids = self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).items()
         vfb_ids = {k: v[0]['vfb_id'] for (k, v) in vfb_ids}
