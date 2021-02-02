@@ -9,7 +9,7 @@ class ConnectomicsImport:
     def __init__(self, neuprint_endpoint=None, neuprint_dataset=None, neuprint_token=None, catmaid_endpoint=None):
         if neuprint_endpoint and neuprint_dataset and neuprint_token:
             self.neuprint_client=neuprint.Client(neuprint_endpoint, dataset=neuprint_dataset, token=neuprint_token)
-        elif catmaid_endpint:
+        elif catmaid_endpoint:
             self.rm=pymaid.CatmaidInstance(catmaid_endpoint, '', '', '')
             #no self?
         else: self.neuprint_client=None
@@ -47,7 +47,7 @@ class ConnectomicsImport:
 #       TODO need to convert per region adjacency matrices to template rows somehow. Is this the best way to do this, I'm pretty sure could work but slow?
 
     def generate_n_n_template(self, dataset, conn_df):
-        robot_template_df=pd.DataFrame({'ID': ['ID'], 'TYPE': ['Type'], 'FACT': ["I 'synapsed to'"], 'Weight': ['>AT n2o:weight^^xsd:integer']})
+        robot_template_df=pd.DataFrame({'ID': ['ID'], 'TYPE': ['TYPE'], 'FACT': ["I 'synapsed to'"], 'Weight': ['>AT n2o:weight^^xsd:integer']})
         vfb_ids = self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).items()
         vfb_ids = {k: v[0]['vfb_id'] for (k, v) in vfb_ids}
         conn_df = conn_df.applymap(str)

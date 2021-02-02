@@ -20,13 +20,13 @@ threshold = args['threshold']
 dataset = args['dataset']
 catmaid_endpoint = args['catmaid_endpoint']
 
-neuprint_endpoint = 'https://neuprint.janelia.org'
-neuprint_dataset = 'hemibrain:v1.1'
-neuprint_token = ''
-threshold = 1
-dataset = 'neuprint_JRC_Hemibrain_1point1'
-dataset = 'catmaid_fafb'
-catmaid_endpoint = 'https://fafb.catmaid.virtualflybrain.org/'
+#for testing
+# neuprint_endpoint = 'https://neuprint.janelia.org'
+# neuprint_dataset = 'hemibrain:v1.1'
+# neuprint_token = ''
+# threshold = 1
+# dataset = 'catmaid_fafb'
+# catmaid_endpoint = 'https://fafb.catmaid.virtualflybrain.org/'
 
 ci=ConnectomicsImport(neuprint_endpoint=neuprint_endpoint,
                       neuprint_dataset=neuprint_dataset,
@@ -35,11 +35,7 @@ ci=ConnectomicsImport(neuprint_endpoint=neuprint_endpoint,
 
 accessions=ci.get_accessions_from_vfb(dataset)
 
-conn_df=ci.get_adjacencies_neuprint(accessions=accessions[0:100], threshold=threshold)
-
-
-rm=pymaid.CatmaidInstance(catmaid_endpoint, '', '', '')
-conn_df=pymaid.get_edges(accessions)
+conn_df=ci.get_adjacencies_CATMAID(accessions, threshold=threshold)
 
 robot_template_df=ci.generate_n_n_template(dataset, conn_df)
 
