@@ -14,7 +14,7 @@ neuprint_JRC_Hemibrain_1point1_template_connectomics.owl: neuprint_JRC_Hemibrain
  	robot template -i helper.owl --add-prefix "n2o: http://neo2owl/custom/" \
        --add-prefix "VFB: http://virtualflybrain.org/reports/VFB_"  --template >$  \
        annotate --ontology-iri "http://virtualflybrain.org/data/VFB/OWL/"%.owl \
-       convert -f ofn -o %_connectomics.owl
+       convert -f ofn -o $@
 
 #%_connectomics.owl: %_template.tsv
 # 	robot template -i helper.owl --add-prefix "n2o: http://neo2owl/custom/" \
