@@ -39,6 +39,6 @@ conn_df=ci.get_adjacencies_CATMAID(accessions, threshold=threshold)
 
 robot_template_df=ci.generate_n_n_template(dataset, conn_df)
 
-robot_template_df.to_csv('Robot_template.tsv', sep='\t', index=False)
+robot_template_df.to_csv('Robot_template.tsv', sep='\t', index=False) #$@ will be filename
 # dataset_template
 
