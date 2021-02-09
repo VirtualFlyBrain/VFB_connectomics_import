@@ -1,2 +1,5 @@
 vfb_connect
 neuprint-python
+argparse
+pandas
+pymaid

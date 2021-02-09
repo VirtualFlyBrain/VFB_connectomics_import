@@ -28,8 +28,9 @@ class ConnectomicsImport:
         conn_df = conn_df[conn_df.weight > threshold]
         return conn_df
 
-    def get_adjacencies_CATMAID(self, accessions, threshold=1):
+    def get_adjacencies_CATMAID(self, accessions, threshold=0):
         conn_df = pymaid.get_edges(accessions)
+        conn_df = conn_df[conn_df.weight > threshold]
         return conn_df
 
 #    def get_regions_CATMAID(self, accessions): #TODO add threshold, volumes?
