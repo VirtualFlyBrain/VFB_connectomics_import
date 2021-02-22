@@ -1,4 +1,1 @@
-robot template -input-iri http://purl.obolibrary.org/obo/ro.owl --add-prefix "n2o: http://neo2owl/custom/" \
---add-prefix "VFB: http://virtualflybrain.org/reports/VFB_" --template /Users/alexmclachlan/Documents/GitHub/VFB_connectomics_import/Robot_template.tsv  \
-annotate --ontology-iri http://virtualflybrain.org/data/VFB/OWL/CATMAID_import.owl \
-convert -f ofn --output FAFB_CATMAID_Import.owl
+robot template -input-iri http://purl.obolibrary.org/obo/ro.owl --add-prefix "n2o: http://neo2owl/custom/" --add-prefix "VFB: http://virtualflybrain.org/reports/VFB_" --template /Users/alexmclachlan/Documents/GitHub/VFB_connectomics_import/Robot_template.tsv  annotate --ontology-iri http://virtualflybrain.org/data/VFB/OWL/CATMAID_import.owl convert -f ofn --output FAFB_CATMAID_Import.owl

@@ -1,0 +1,1 @@
+alexmclachlan$ python /Users/alexmclachlan/Documents/GitHub/VFB_connectomics_import/src/VFB_connectomics_import/script_runner_CATMAID.py -t 0 -d catmaid_fafb -c_e https://fafb.catmaid.virtualflybrain.org/
