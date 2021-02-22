@@ -6,6 +6,7 @@ parser = argparse.ArgumentParser(description='Script accepts a VFB dataset name 
 parser.add_argument('--threshold', '-t', type=int, help='Neuron-neuron connections which are not greater than this integer will be omitted')
 parser.add_argument('--dataset', '-d', type=str, help='VFB dataset string')
 parser.add_argument('--catmaid_endpoint', '-c_e', type=str, help='CATMAID endpoint URL string (see VFB website for public CATMAID servers')
+parser.add_argument('--output_file', '-o', type=str, help='output filepath')
 #add catmaid/neuprint as arg
 args = vars(parser.parse_args())
 
@@ -13,6 +14,7 @@ args = vars(parser.parse_args())
 threshold = args['threshold']
 dataset = args['dataset']
 catmaid_endpoint = args['catmaid_endpoint']
+output_file=args['output_file']
 
 #for testing
 # threshold = 1
@@ -27,4 +29,4 @@ conn_df=ci.get_adjacencies_CATMAID(accessions, threshold=threshold)
 
 robot_template_df=ci.generate_n_n_template(dataset, conn_df)
 
-robot_template_df.to_csv('Robot_template.tsv', sep='\t', index=False)
+robot_template_df.to_csv(output_file, sep='\t', index=False)
