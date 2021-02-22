@@ -3,4 +3,3 @@ neuprint-python
 argparse
 pandas
 python-catmaid
-setuptools_rust
