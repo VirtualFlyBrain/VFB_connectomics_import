@@ -13,7 +13,7 @@ class ConnectomicsImport:
             self.rm=pymaid.CatmaidInstance(catmaid_endpoint, '', '', '')
             #no self?
         else: self.neuprint_client=None
-        self.vc = VfbConnect(neo_endpoint="http://kb.virtualflybrain.org")
+        self.vc = VfbConnect(neo_endpoint="http://kb.p2.virtualflybrain.org")
 
     def get_accessions_from_vfb(self, dataset):
         accessions = list(map(int, self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).keys()))
