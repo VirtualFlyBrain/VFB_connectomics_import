@@ -8,6 +8,7 @@ parser.add_argument('--neuprint_dataset', '-n_d', type=str, help='NeuPrint datas
 parser.add_argument('--neuprint_token', '-n_t', type=str, help='NeuPrint auth token string')
 parser.add_argument('--threshold', '-t', type=int, help='Neuron-neuron connections which are not greater than this integer will be omitted')
 parser.add_argument('--dataset', '-d', type=str, help='VFB dataset string')
+parser.add_argument('--output_file', '-o', type=str, help='output filepath')
 #add catmaid/neuprint as arg
 args = vars(parser.parse_args())
 
@@ -23,6 +24,7 @@ dataset = args['dataset']
 # neuprint_token = ''
 # threshold = 1
 # dataset = 'neuprint_JRC_Hemibrain_1point1'
+# output_file = '?'
 
 ci=ConnectomicsImport(neuprint_endpoint=neuprint_endpoint,
                       neuprint_dataset=neuprint_dataset,
@@ -35,4 +37,4 @@ conn_df=ci.get_adjacencies_neuprint(accessions=accessions, threshold=threshold)
 
 robot_template_df=ci.generate_n_n_template(dataset, conn_df)
 
-robot_template_df.to_csv('Robot_template.tsv', sep='\t', index=False)
+robot_template_df.to_csv(output_file, sep='\t', index=False)
