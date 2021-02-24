@@ -32,7 +32,7 @@ jobs:
     - name: Import neuprint connectome
       run: |
         cd $GITHUB_WORKSPACE/src/VFB_connectomics_import
-        python src/VFB_connectomics_import/CATMAID_script_runner.py -t 0 -d catmaid_fafb -c_e https://fafb.catmaid.virtualflybrain.org/
+        python script_runner_CATMAID.py -t 0 -d catmaid_fafb -c_e https://fafb.catmaid.virtualflybrain.org/
     - name: Robot
       run: |
         echo RUN ROBOT JOB HERE      
