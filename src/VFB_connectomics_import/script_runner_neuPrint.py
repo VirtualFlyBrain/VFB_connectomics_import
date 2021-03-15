@@ -18,6 +18,7 @@ neuprint_dataset = args['neuprint_dataset']
 neuprint_token = args['neuprint_token']
 threshold = args['threshold']
 dataset = args['dataset']
+output_file = args['output_file']
 
 # neuprint_endpoint = 'https://neuprint.janelia.org'
 # neuprint_dataset = 'hemibrain:v1.1'

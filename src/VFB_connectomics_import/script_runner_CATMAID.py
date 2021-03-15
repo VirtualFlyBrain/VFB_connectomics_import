@@ -16,10 +16,17 @@ dataset = args['dataset']
 catmaid_endpoint = args['catmaid_endpoint']
 output_file=args['output_file']
 
-#for testing
+#for testing FAFB
 # threshold = 1
 # dataset = 'catmaid_fafb'
 # catmaid_endpoint = 'https://fafb.catmaid.virtualflybrain.org/'
+# output_file = 'test.tsv'
+
+#for testing L1EM
+# threshold = 1
+# dataset = 'catmaid_l1em'
+# catmaid_endpoint = 'https://l1em.catmaid.virtualflybrain.org/'
+# output_file = 'test.tsv'
 
 ci=ConnectomicsImport(catmaid_endpoint=catmaid_endpoint)
 

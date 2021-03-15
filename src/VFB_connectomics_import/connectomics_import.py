@@ -16,7 +16,8 @@ class ConnectomicsImport:
         self.vc = VfbConnect(neo_endpoint="http://kb.p2.virtualflybrain.org")
 
     def get_accessions_from_vfb(self, dataset):
-        accessions = list(map(int, self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).keys()))
+        #accessions = list(map(int, self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).keys()))
+        accessions = list(self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).keys())
         return accessions #call function
 
     def get_adjacencies_neuprint(self, accessions, threshold=1, testmode=False):# add testmode?
@@ -60,6 +61,3 @@ class ConnectomicsImport:
         conn_df['TYPE']='owl:NamedIndividual'
         robot_template_df=robot_template_df.append(conn_df)
         return robot_template_df
-
-
-#TODO args for both should stay the same
