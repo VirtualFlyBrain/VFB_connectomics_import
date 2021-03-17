@@ -20,6 +20,31 @@ class ConnectomicsImport:
         accessions = list(self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).keys())
         return accessions #call function
 
+    # def get_minimal_metadata_neuprint(self):
+    import yaml
+    #     q = "MATCH (n:Neuron) WHERE exists(n.type) return n.bodyId, n.instance, n.statusLabel, n.cropped"
+    #     bodyIds1_1 = np1_1_client.fetch_custom(q).astype(str)
+
+    # bodyIds1_1 = bodyIds1_1.rename(columns={'n.bodyId': 'filename'})
+    # bodyIds1_1['label'] = bodyIds1_1['n.instance'] + ' - ' + bodyIds1_1['filename']
+    # bodyIds1_1['is_a'] = 'neuron'
+    # bodyIds1_1['part_of'] = 'female organism|adult brain'
+    # bodyIds1_1['dbxrefs'] = 'neuprint_JRC_Hemibrain_1point1:' + bodyIds1_1['filename']
+    # bodyIds1_1['comment'] = 'tracing status-' + bodyIds1_1['n.statusLabel'] + ', ' + 'cropped-' + bodyIds1_1['n.cropped']
+    # bodyIds1_1 = bodyIds1_1.drop(['n.instance', 'n.statusLabel', 'n.cropped'], axis=1)
+    # bodyIds1_1.to_csv('anat_' + 'Xu2020NeuronsV1point1' + '_' + date.today().strftime('%Y%m%d')[2:8] + '.tsv', sep='\t',index=False)
+
+    ##create yaml data and write file
+    # yaml data
+    # yaml_data = dict(
+    #     DataSet='Xu2020NeuronsV1point1',
+    #     Curator='adm71',
+    #     Template='JRC_FlyEM_Hemibrain_c',
+    #     Imaging_type='SB-SEM')
+    # write yaml file
+    # with open('anat_' + 'Xu2020NeuronsV1point1' + '_' + date.today().strftime('%Y%m%d')[2:8] + '.yaml', 'w') as outfile:
+    #     yaml.dump(yaml_data, outfile, default_flow_style=False)
+
     def get_adjacencies_neuprint(self, accessions, threshold=1, testmode=False):# add testmode?
         #fetch neuron-neuron connectivity for only between the accessions and only within PRIMARY rois and collapse rois to total
         neuron_df, conn_df = fetch_adjacencies(sources=accessions, targets=accessions)
