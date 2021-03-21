@@ -4,3 +4,4 @@ argparse
 pandas
 python-catmaid
 jsonpath-rw
+yaml
