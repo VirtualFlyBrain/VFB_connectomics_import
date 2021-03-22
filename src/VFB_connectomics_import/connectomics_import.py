@@ -16,12 +16,11 @@ class ConnectomicsImport:
         self.vc = VfbConnect(neo_endpoint="http://kb.p2.virtualflybrain.org")
 
     def get_accessions_from_vfb(self, dataset):
-        #accessions = list(map(int, self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).keys()))
         accessions = list(self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).keys())
         return accessions #call function
 
     # def get_minimal_metadata_neuprint(self):
-    import yaml
+    # import yaml
     #     q = "MATCH (n:Neuron) WHERE exists(n.type) return n.bodyId, n.instance, n.statusLabel, n.cropped"
     #     bodyIds1_1 = np1_1_client.fetch_custom(q).astype(str)
 
