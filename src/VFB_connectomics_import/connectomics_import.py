@@ -83,5 +83,5 @@ class ConnectomicsImport:
         conn_df['ID']=conn_df['ID'].str.replace('_', ':')
         conn_df['FACT']=conn_df['FACT'].str.replace('_', ':')
         conn_df['TYPE']='owl:NamedIndividual'
-        robot_template_df=robot_template_df.append(conn_df)
+        robot_template_df = pd.concat([robot_template_df, conn_df], ignore_index=True)
         return robot_template_df
