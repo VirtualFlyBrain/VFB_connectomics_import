@@ -5,3 +5,82 @@ pandas
 python-catmaid
 jsonpath-rw
 pyyaml
+
+
+#!.pyenv/bin/python3.9
+
+import os
+from vfb_connect.cross_server_tools import VfbConnect
+import neuprint as np
+import navis
+import flybrains
+
+# Download the JRC VNC transforms
+flybrains.download_jrc_vnc_transforms()
+
+# Register the downloaded transforms
+flybrains.register_transforms()
+
+# Setup connection to the VFB Neo4j database
+kbw = VfbConnect(neo_endpoint='http://kb.virtualflybrain.org:80', neo_credentials=('neo4j', os.environ.get('password')))
+
+# Initialize the neuprint client
+client = np.Client('https://neuprint.janelia.org', dataset='manc:v1.0', token=os.environ.get('NEUPRINT_TOKEN'))
+
+# Your Cypher query
+cypher_query = """
+MATCH (d:DataSet {short_form:'Takemura2023'})<-[:has_source]-(i:Individual)<-[:depicts]-(ic:Individual)
+-[r:in_register_with]->(tc:Template)
+RETURN r.filename[0] as bodyid, r.folder[0] as folder
+"""
+
+# Execute the Cypher query using the commit_list method
+output = kbw.nc.commit_list(statements=[cypher_query])
+
+# Check for errors in the response
+if output is False or not output:
+    print("An error occurred while executing the Cypher query.")
+    exit(1)  # Exit the script in case of an error
+
+# Access the data key of the first item in the output list
+query_data = output[0]['data']
+
+# Process the results
+for result in query_data:
+    # Access the row key of each result item to get the bodyid and folder values
+    body_id, folder_url = result['row']
+    folder_url = folder_url.replace('http://www.virtualflybrain.org/data/', '/IMAGE_WRITE/')
+
+    # Create the local folder if it doesn't exist
+    local_folder_path = os.path.dirname(folder_url)
+    os.makedirs(local_folder_path, exist_ok=True)
+
+    # Path for the output SWC file
+    filename = os.path.join(local_folder_path, f"volume.swc")
+
+    # Check if the output file already exists, if so, skip to the next iteration
+    if os.path.exists(filename):
+        print(f"File for neuron {body_id} already exists. Skipping...")
+        continue
+
+    try:
+        # Download skeleton
+        neuron = np.fetch_skeleton(body_id, heal=True)
+
+        # Transform neuron data from MANC to JRCVNC2018U via JRCVNC2018M
+        transformed_neuron_df = navis.xform_brain(neuron, source='MANCraw', target='JRCVNC2018U', via='JRCVNC2018M')
+
+        # Check for warnings
+        if len(transformed_neuron_df) == 0:
+            print(f"Warning: No data available for neuron {body_id}. Possibly outside the H5 deformation field.")
+            continue  # Skip to the next iteration
+
+        # Convert DataFrame to SWC format
+        swc_data = np.skeleton_df_to_swc(transformed_neuron_df)
+
+        # Save to SWC file
+        with open(filename, 'w') as file:
+            file.write(swc_data)
+        print(f"Written to {filename.replace('/IMAGE_WRITE/','http://www.virtualflybrain.org/data/')}")
+    except Exception as e:
+        print(f"Warning: Failed to process neuron {body_id}. Error: {e}")
