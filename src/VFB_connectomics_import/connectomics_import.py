@@ -58,6 +58,11 @@ class ConnectomicsImport:
         conn_df = conn_df[conn_df.weight > threshold]
         return conn_df
 
+    def get_adjacencies_flywire(self, accessions, threshold=0):
+        conn_df = flywire.fetch_connectivity(accessions) #can this be limited during grabbing rather than after?
+        conn_df = conn_df[conn_df.weight > threshold]
+        return conn_df
+
 #    def get_regions_CATMAID(self, accessions): #TODO add threshold, volumes?
 #       volume=pymaid.get_volume('FAFB volume name') [use pymaid.get_volume() to get list]
 #       adj=pymaid.adjacency_matrix(accessions, volume_filter=volume)

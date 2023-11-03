@@ -22,17 +22,19 @@ output_file = args['output_file']
 
 dataset = 'Dorkenwald2023'
 threshold = 1
-output_file = 'Dorkenwald2023_adjacencies.robot'
+output_file = 'Dorkenwald2023_adjacencies.robot'F
 
 accessions=ci.get_accessions_from_vfb(dataset)
 
-conn_df=ci.get_adjacencies_neuprint(accessions=accessions, threshold=threshold)
+conn_df=ci.get_adjacencies_flywire(accessions=accessions, threshold=threshold)
 
 robot_template_df=ci.generate_n_n_template(dataset, conn_df)
 
 robot_template_df.to_csv(output_file, sep='\t', index=False)
 
 
+
+### testing scraps
 da1_roots = [
 720575940604407468,
 720575940623543881,
@@ -42,4 +44,5 @@ da1_roots = [
 720575940623303108,
 720575940630066007,]
 
-edge_list = flywire.fetch_connectivity(da1_roots)
+#get_adjacencies needs to use this:
+#    edge_list = flywire.fetch_connectivity(da1_roots)
