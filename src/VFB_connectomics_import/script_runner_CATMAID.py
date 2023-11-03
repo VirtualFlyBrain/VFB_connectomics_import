@@ -16,8 +16,8 @@ dataset = args['dataset']
 catmaid_endpoint = args['catmaid_endpoint']
 output_file=args['output_file']
 
-#for testing FAFB
-# threshold = 1
+# for testing FAFB
+# threshold = 100
 # dataset = 'catmaid_fafb'
 # catmaid_endpoint = 'https://fafb.catmaid.virtualflybrain.org/'
 # output_file = 'test.tsv'

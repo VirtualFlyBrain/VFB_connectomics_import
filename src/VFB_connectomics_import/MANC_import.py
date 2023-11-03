@@ -39,7 +39,7 @@ curation_tsv=neuprint_curation.generate_curation_tsv(query)
 
 
 
-##### scraps for testing skels/meshes, code runs on jenkins.
+##### scraps for testing skels/meshes, code runs on jenkins (https://jenkins.virtualflybrain.org/view/ImageCreation/job/Load%20neurons%20from%20neuprint/).
 
 # load flybrains transforms
 # 
