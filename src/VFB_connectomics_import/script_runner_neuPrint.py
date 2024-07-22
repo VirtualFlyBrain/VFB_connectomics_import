@@ -20,19 +20,19 @@ threshold = args['threshold']
 dataset = args['dataset']
 output_file = args['output_file']
 
-# neuprint_endpoint = 'https://neuprint.janelia.org'
-# neuprint_dataset = 'hemibrain:v1.1'
-# neuprint_token = ''
-# threshold = 1
-# dataset = 'neuprint_JRC_Hemibrain_1point1'
-# output_file = '?'
+neuprint_endpoint = 'https://neuprint.janelia.org'
+neuprint_dataset = 'manc:v1.2.1'
+neuprint_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbTcxQGNhbS5hYy51ayIsImxldmVsIjoibm9hdXRoIiwiaW1hZ2UtdXJsIjoiaHR0cHM6Ly9saDMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL2EvQUNnOG9jTFhRZzltNUpUWjVibmdjRl9lSXROa1cxQUtVcU5IWmpfVENJWXl1VnZwT19mUHJBPXM5Ni1jP3N6PTUwP3N6PTUwIiwiZXhwIjoxOTAxNjQ3MDMwfQ.bqzIwWAGNEcrpvaRX_M-U33d46xfTK7XxVKhz6P6BqQ'
+threshold = 1
+dataset = 'Takemura2023'
+output_file = 'Takemura2023_n_2_n.tsv'
+db='neuprint_JRC_Manc_1_2_1'
 
 ci=ConnectomicsImport(neuprint_endpoint=neuprint_endpoint,
                       neuprint_dataset=neuprint_dataset,
-                      neuprint_token=neuprint_token,
-                      catmaid_endpoint=catmaid_endpoint)
+                      neuprint_token=neuprint_token)
 
-accessions=ci.get_accessions_from_vfb(dataset)
+accessions=ci.get_accessions_from_vfb(dataset) #TODO this should have dataset
 
 conn_df=ci.get_adjacencies_neuprint(accessions=accessions, threshold=threshold)
 

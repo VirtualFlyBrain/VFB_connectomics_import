@@ -15,9 +15,12 @@ class ConnectomicsImport:
         else: self.neuprint_client=None
         self.vc = VfbConnect(neo_endpoint="http://kb.virtualflybrain.org")
 
-    def get_accessions_from_vfb(self, dataset):
-        accessions = list(self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).keys())
-        return accessions #call function
+    def get_accessions_from_vfb(self, dataset): #check dataset in query actually works
+        query = 'MATCH (ds {short_form:' + dataset + '})-[:has_source]-(n)-[a:database_cross_reference]-(:Site) RETURN DISTINCT a.accession[0]'
+        accessions = self.vc.nc.commit_list([query])
+        accessions_list = list(pd.DataFrame(accessions[0]['data'])['row'].explode())
+        accessions_list = list(map(int, accessions_list))
+        return accessions_list #call function
 
     # def get_minimal_metadata_neuprint(self):
     # import yaml
@@ -77,9 +80,9 @@ class ConnectomicsImport:
 #
 #       TODO need to convert per region adjacency matrices to template rows somehow. Is this the best way to do this, I'm pretty sure could work but slow?
 
-    def generate_n_n_template(self, dataset, conn_df):
+    def generate_n_n_template(self, db, conn_df):
         robot_template_df=pd.DataFrame({'ID': ['ID'], 'TYPE': ['TYPE'], 'FACT': ["I 'synapsed to'"], 'Weight': ['>AT n2o:weight^^xsd:integer']})
-        vfb_ids = self.vc.neo_query_wrapper.xref_2_vfb_id(db=dataset).items()
+        vfb_ids = self.vc.neo_query_wrapper.xref_2_vfb_id(db=db).items()
         vfb_ids = {k: v[0]['vfb_id'] for (k, v) in vfb_ids}
         conn_df = conn_df.applymap(str)
         conn_df['source']=conn_df['source'].map(vfb_ids)
