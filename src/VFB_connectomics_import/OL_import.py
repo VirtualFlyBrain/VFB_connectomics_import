@@ -18,12 +18,15 @@ class neuprint_curation:
 
         neurons_df, roi_counts_df = fetch_custom_neurons(query)
         neurons_df=neurons_df[~neurons_df.type.str.contains('unclear|TBD|\(')] #drop neurons with type containing 'unclear' as unmappable
+        if neurons_df.instance.isna().any():
+            print('warning - missing instances')
+        neurons_df=neurons_df[~neurons_df.instance.isna()]
         curation_tsv = pd.DataFrame()
         #these don't have vfb ids provided so loading with automatic assignment
         curation_tsv['filename'] = neurons_df[['bodyId']]
         curation_tsv['is_a'] = 'adult neuron'
         curation_tsv['part_of'] = 'male organism'
-        curation_tsv['label'] = neurons_df['instance'] + ' (JRC_Optic_Lobe:' + neurons_df['bodyId'].astype(str) + ')'
+        curation_tsv['label'] = neurons_df['instance'] + ' (JRC_OpticLobe:' + neurons_df['bodyId'].astype(str) + ')'
         curation_tsv['comment'] = 'status-' + neurons_df['status'] + ', status label-' + neurons_df['statusLabel'] + ', Optic Lobe classification: type-' + neurons_df['type']
         curation_tsv['dbxrefs'] = 'neuprint_JRC_OpticLobe_v1_0:' + neurons_df['bodyId'].astype('str')
         return curation_tsv
