@@ -37,8 +37,41 @@ query = 'MATCH (n :Neuron) WHERE n.type is not null RETURN n'
 #query = 'MATCH (n :Neuron) WHERE n.type is not null RETURN n LIMIT 100'
 curation_tsv=neuprint_curation.generate_curation_tsv(query)
 
-curation_tsv.to_csv('anat_Nern2024_' + datetime.date.today().strftime('%Y%m%d')[2:8] + '.tsv', sep='\t', index=False)
+##large records need to be split up into 20k chunks (hopefully this can be removed later)
+#testset
+curation_tsv[0:100].to_csv('anat_Nern2024_' + datetime.date.today().strftime('%Y%m%d')[2:8] + '_testset2.tsv', sep='\t', index=False)
+curation_tsv[100:20100].to_csv('anat_Nern2024_a' + datetime.date.today().strftime('%Y%m%d')[2:8] + '.tsv', sep='\t', index=False)
+curation_tsv[20100:40100].to_csv('anat_Nern2024_b' + datetime.date.today().strftime('%Y%m%d')[2:8] + '.tsv', sep='\t', index=False)
+curation_tsv[40100:len(curation_tsv)].to_csv('anat_Nern2024_c' + datetime.date.today().strftime('%Y%m%d')[2:8] + '.tsv', sep='\t', index=False)
 
+#chunk the rest
+chunk_size=20000
+tsvs = []
+for i in range((len(curation_tsv)-100)//chunk_size):
+    tsvs[i]=curation_tsv[i*chunk_size:(i+1)*chunk_size]
+
+    curation_tsv[i*chunk_size:(i+1)*chunk_size].to_csv('anat_Nern2024_' + datetime.date.today().strftime('%Y%m%d')[2:8] + '_'+ i + '.tsv', sep='\t', index=False)
+
+for s in samples:
+    sample_data = expression_data[expression_data['id']==s]
+    sample_data = sample_data.assign(hide_in_terminfo = 'true')
+    sample_id = s.replace("NCBI_SAM:", "")
+    dataset_group = sample_grouping_dict[s]
+    chunk_counter = -(-len(sample_data) // row_limit) # number of chunks to split file
+    while chunk_counter > 0:
+        start = (chunk_counter-1) * row_limit
+        end = chunk_counter * row_limit
+        if end > len(sample_data):
+            end = len(sample_data)
+        sample_data_chunk = sample_data[start:end]
+        sample_data_chunk.to_csv("expression_data/dataset_%s_%s-sample_%s_chunk_%s.tsv" %(dataset, dataset_group, sample_id, chunk_counter), sep='\t', index=None)
+        chunk_counter = chunk_counter - 1
+
+curation_tsv[100:].to_csv('anat_Nern2024_' + datetime.date.today().strftime('%Y%m%d')[2:8] + '_testset.tsv', sep='\t', index=False)
+curation_tsv[0:100].to_csv('anat_Nern2024_' + datetime.date.today().strftime('%Y%m%d')[2:8] + '_testset.tsv', sep='\t', index=False)
+
+#use this if chunking not needed (may want a test set though)
+#curation_tsv.to_csv('anat_Nern2024_' + datetime.date.today().strftime('%Y%m%d')[2:8] + '.tsv', sep='\t', index=False)
 ##### scraps for testing skels/meshes, code runs on jenkins (https://jenkins.virtualflybrain.org/view/ImageCreation/job/Load%20neurons%20from%20neuprint/).
 
 # load flybrains transforms

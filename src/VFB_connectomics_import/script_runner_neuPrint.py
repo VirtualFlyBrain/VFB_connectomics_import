@@ -21,12 +21,12 @@ dataset = args['dataset']
 output_file = args['output_file']
 
 neuprint_endpoint = 'https://neuprint.janelia.org'
-neuprint_dataset = 'manc:v1.2.1'
+neuprint_dataset = 'optic-lobe:v1.0'
 neuprint_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbTcxQGNhbS5hYy51ayIsImxldmVsIjoibm9hdXRoIiwiaW1hZ2UtdXJsIjoiaHR0cHM6Ly9saDMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL2EvQUNnOG9jTFhRZzltNUpUWjVibmdjRl9lSXROa1cxQUtVcU5IWmpfVENJWXl1VnZwT19mUHJBPXM5Ni1jP3N6PTUwP3N6PTUwIiwiZXhwIjoxOTAxNjQ3MDMwfQ.bqzIwWAGNEcrpvaRX_M-U33d46xfTK7XxVKhz6P6BqQ'
 threshold = 1
-dataset = 'Takemura2023'
-output_file = 'Takemura2023_n_2_n.tsv'
-db='neuprint_JRC_Manc_1_2_1'
+dataset = 'Nern2024'
+output_file = 'Nern2024_n_2_n.tsv'
+db='neuprint_JRC_OpticLobe_v1_0'
 
 ci=ConnectomicsImport(neuprint_endpoint=neuprint_endpoint,
                       neuprint_dataset=neuprint_dataset,
@@ -36,6 +36,6 @@ accessions=ci.get_accessions_from_vfb(dataset) #TODO this should have dataset
 
 conn_df=ci.get_adjacencies_neuprint(accessions=accessions, threshold=threshold)
 
-robot_template_df=ci.generate_n_n_template(dataset, conn_df)
+robot_template_df=ci.generate_n_n_template(db, conn_df)
 
 robot_template_df.to_csv(output_file, sep='\t', index=False)
