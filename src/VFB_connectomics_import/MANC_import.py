@@ -41,39 +41,39 @@ curation_tsv=neuprint_curation.generate_curation_tsv(query)
 
 ##### scraps for testing skels/meshes, code runs on jenkins (https://jenkins.virtualflybrain.org/view/ImageCreation/job/Load%20neurons%20from%20neuprint/).
 
-# load flybrains transforms
-# 
-# #flybrains.download_jefferislab_transforms()
-# flybrains.download_jrc_transforms()
-# flybrains.download_jrc_vnc_transforms()
-# ### flybrains.download_vfb_transforms()
-# flybrains.register_transforms()
-#
-# #curation_tsv.to_csv('a.tsv', sep='\t', index= False)
-#
-# ### Getting skeletons
-#
-# neuronlist=(neu.fetch_skeletons(curation_tsv.filename[0:10]))
-#
-# navis.plot3d([flybrains.MANCraw, neuronlist]).show()
-#
-# ### Bridging skeletons
-#
-# transformed_neuron_df = navis.xform_brain(neuronlist, source='MANCraw', target='JRCVNC2018U')
-#
-# navis.plot3d([transformed_neuron_df, flybrains.JRCVNC2018U]).show()
-#
-# ### Getting meshes
-#
-# mesh_neuron_list = neu.fetch_mesh_neuron(list(curation_tsv.filename[0:10]), missing_mesh='warn')
-# navis.plot3d([flybrains.MANCraw, mesh_neuron_list[0:10]]).show()
-#
-# ### bridgeing meshes
-#
-# transformed_mesh_neuron_df = navis.xform_brain(mesh_neuron_list, source='MANCraw', target='JRCVNC2018U', via='JRCVNC2018M')
-# navis.plot3d([transformed_mesh_neuron_df[0:20], flybrains.JRCVNC2018U]).show()
-#
-#
-# test2=neu.fetch_skeletons(23801)
-# navis.plot3d(test2).show()
+#load flybrains transforms
+
+#flybrains.download_jefferislab_transforms()
+flybrains.download_jrc_transforms()
+flybrains.download_jrc_vnc_transforms()
+### flybrains.download_vfb_transforms()
+flybrains.register_transforms()
+
+#curation_tsv.to_csv('a.tsv', sep='\t', index= False)
+
+### Getting skeletons
+
+neuronlist=(neu.fetch_skeletons(curation_tsv.filename[0:10]))
+
+navis.plot3d([flybrains.MANCraw, neuronlist]).show()
+
+### Bridging skeletons
+
+transformed_neuron_df = navis.xform_brain(neuronlist, source='MANCraw', target='JRCVNC2018U')
+
+navis.plot3d([transformed_neuron_df, flybrains.JRCVNC2018U]).show()
+
+### Getting meshes
+
+mesh_neuron_list = neu.fetch_mesh_neuron(list(curation_tsv.filename[0:10]), missing_mesh='warn')
+navis.plot3d([flybrains.MANCraw, mesh_neuron_list[0:10]]).show()
+
+### bridgeing meshes
+
+transformed_mesh_neuron_df = navis.xform_brain(mesh_neuron_list, source='MANCraw', target='JRCVNC2018U', via='JRCVNC2018M')
+navis.plot3d([transformed_mesh_neuron_df[0:20], flybrains.JRCVNC2018U]).show()
+
+
+test2=neu.fetch_skeletons(23801)
+navis.plot3d(test2).show()
 

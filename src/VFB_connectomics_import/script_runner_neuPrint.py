@@ -32,7 +32,7 @@ ci=ConnectomicsImport(neuprint_endpoint=neuprint_endpoint,
                       neuprint_dataset=neuprint_dataset,
                       neuprint_token=neuprint_token)
 
-accessions=ci.get_accessions_from_vfb(dataset) #TODO this should have dataset
+accessions=ci.get_accessions_from_vfb(dataset)
 
 conn_df=ci.get_adjacencies_neuprint(accessions=accessions, threshold=threshold)
 
