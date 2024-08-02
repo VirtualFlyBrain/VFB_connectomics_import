@@ -16,7 +16,7 @@ class ConnectomicsImport:
         self.vc = VfbConnect(neo_endpoint="http://kb.virtualflybrain.org")
 
     def get_accessions_from_vfb(self, dataset): #check dataset in query actually works
-        query = 'MATCH (ds {short_form:' + dataset + '})-[:has_source]-(n)-[a:database_cross_reference]-(:Site) RETURN DISTINCT a.accession[0]'
+        query = 'MATCH (ds {short_form:"' + dataset + '"})-[:has_source]-(n)-[a:database_cross_reference|hasDbXref]-(:Site) RETURN DISTINCT a.accession[0]'
         accessions = self.vc.nc.commit_list([query])
         accessions_list = list(pd.DataFrame(accessions[0]['data'])['row'].explode())
         accessions_list = list(map(int, accessions_list))
