@@ -103,6 +103,17 @@ mesh_neuron_list = neu.fetch_mesh_neuron(list(curation_tsv.filename), missing_me
 navis.plot3d([flybrains.JRCFIB2022Mraw, mesh_neuron_list[0]]).show(renderer='browser')
 
 ### bridgeing meshes
-transformed_mesh_neuron_df = navis.xform_brain(mesh_neuron_list, source='JRCFIB2022Mraw', target='JRC2018U')
-navis.plot3d([transformed_mesh_neuron_df[0], flybrains.JRC2018U]).show(renderer='browser')
+transformed_mesh_neuron_df = navis.xform_brain(mesh_neuron_list[0], source='JRCFIB2022Mraw', target='JRC2018U')
+navis.plot3d([transformed_mesh_neuron_df, flybrains.JRC2018U]).show(renderer='browser')
 
+### Testing skelmesh loader output
+swc=navis.read_swc('/Users/adm/Downloads/volume(1).swc')
+mesh=navis.read_mesh('/Users/adm/Downloads/volume_man(1).obj')
+nrrd=navis.read_nrrd('/Users/adm/Downloads/volume.nrrd')
+
+navis.plot3d([mesh, swc, nrrd, flybrains.JRC2018U]).show(renderer='browser')
+
+mesh2=navis.read_mesh('/Users/adm/Downloads/volume_man(2).obj')
+swc2=navis.read_swc('/Users/adm/Downloads/volume(2).swc')
+navis.plot3d([mesh2, swc2, flybrains.JRC2018U]).show(renderer='browser')
+mesh2
