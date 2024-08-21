@@ -42,15 +42,23 @@ class ConnectomicsImport:
         conn_df = conn_df[conn_df.weight > threshold]
         return conn_df
 
-    ###This function seems to crash my mac if too man neurons are requested.
+    ###This function seems to crash my mac if too man neurons are requested. - try using get_connectivity based function below.
     # def get_adjacencies_flywire(self, accessions, threshold=0):
     #     conn_df = flywire.get_adjacency(accessions, materialization=783, filtered=True)
     #     conn_df = conn_df.stack().reset_index(name='weight')
     #     conn_df = conn_df[conn_df.weight > threshold]
     #     return conn_df
 
-    def get_adjacencies_flywire(self, accessions, threshold=0):
-    
+    def get_adjacencies_flywire(self, accessions, threshold=0, batchsize=1000):
+        conn_df=pd.DataFrame()
+        batchsize = batchsize # batching allows filtering to be applied periodically so that the df isn't clogged with irrelevant connectivity
+        for i in range(0, len(accessions), batchsize): #should probably print overall progress as well.
+            batch = accessions[i:i + batchsize] #last batch will likely not be as large as the batchsize, also these batches are also sub batched by the get_connectivity below
+            batch_df = flywire.get_connectivity(batch, upstream=False, downstream=True, materialization=783, filtered=True, clean=True, batch_size=100, dataset='public', proofread_only=True) #getting all downstream connectivity gets all connectivity.
+            batch_df = batch_df[batch_df['post'].isin(accessions)][batch_df.weight > threshold] #filter out connections below threshold + only need connections to downstream partners which exist in vfb
+            conn_df=pd.concat([conn_df, batch_df]) #add batch to main conn_df
+        conn_df.rename(columns={'pre': 'source', 'post': 'target'}, inplace=True)
+        return conn_df
 
     def generate_n_n_template(self, db, conn_df):
         robot_template_df=pd.DataFrame({'ID': ['ID'], 'TYPE': ['TYPE'], 'FACT': ["I 'synapsed to'"], 'Weight': ['>AT n2o:weight^^xsd:integer']})

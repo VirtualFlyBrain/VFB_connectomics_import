@@ -29,7 +29,7 @@ ci=ConnectomicsImport()
 
 accessions=ci.get_accessions_from_vfb(dataset, db)
 
-conn_df=ci.get_adjacencies_flywire(accessions=accessions, threshold=threshold)
+conn_df=ci.get_adjacencies_flywire(accessions=accessions, threshold=threshold, batchsize=1000)
 
 robot_template_df=ci.generate_n_n_template(db, conn_df)
 
