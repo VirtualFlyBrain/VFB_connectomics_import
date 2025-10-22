@@ -17,7 +17,7 @@ def generate_curation_tsv(root_ids):
     curation_tsv = pd.DataFrame()
     curation_tsv['filename'] = df['filename']
     curation_tsv['is_a'] = 'adult neuron'
-    curation_tsv['part_of'] = 'adult brain'  # Update when BANC organism info is known
+    curation_tsv['part_of'] = 'adult brain|adult ventral nerve cord'  # BANC covers whole CNS
     curation_tsv['label'] = 'BANC:' + df['filename'].astype(str)
     curation_tsv['comment'] = 'BANC connectome neuron'
     curation_tsv['dbxrefs'] = 'flywire_banc:' + df['filename'].astype(str)
