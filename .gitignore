@@ -1,2 +1,7 @@
 .idea
 **/.DS_Store
+src/VFB_connectomics_import/__pycache__
+src/VFB_connectomics_import/*.pyc
+src/VFB_connectomics_import/tests/__pycache__
+src/VFB_connectomics_import/tests/*.pyc
+.env
