@@ -23,7 +23,20 @@ class ConnectomicsImport:
         else:
             query = 'MATCH (ds {short_form:"' + dataset + '"})-[:has_source]-(n)-[a:database_cross_reference|hasDbXref]-(:Site) RETURN DISTINCT a.accession[0]'
         accessions = self.vc.nc.commit_list([query])
-        accessions_list = list(pd.DataFrame(accessions[0]['data'])['row'].explode())
+        
+        # Handle empty results
+        if not accessions or not accessions[0].get('data'):
+            print(f"Warning: No data returned from query for dataset '{dataset}'" + (f" and db '{db}'" if db else ""))
+            print(f"Query: {query}")
+            return []
+        
+        df = pd.DataFrame(accessions[0]['data'])
+        if 'row' not in df.columns:
+            print(f"Warning: Query returned data but no 'row' column. Columns: {df.columns.tolist()}")
+            print(f"Data: {accessions[0]['data']}")
+            return []
+            
+        accessions_list = list(df['row'].explode())
         accessions_list = list(map(int, accessions_list))
         return accessions_list #call function
 
@@ -49,12 +62,12 @@ class ConnectomicsImport:
     #     conn_df = conn_df[conn_df.weight > threshold]
     #     return conn_df
 
-    def get_adjacencies_flywire(self, accessions, threshold=0, batchsize=1000):
+    def get_adjacencies_flywire(self, accessions, threshold=0, batchsize=1000, dataset='public', materialization=783):
         conn_df=pd.DataFrame()
         batchsize = batchsize # batching allows filtering to be applied periodically so that the df isn't clogged with irrelevant connectivity
         for i in range(0, len(accessions), batchsize): #should probably print overall progress as well.
             batch = accessions[i:i + batchsize] #last batch will likely not be as large as the batchsize, also these batches are also sub batched by the get_connectivity below
-            batch_df = flywire.get_connectivity(batch, upstream=False, downstream=True, materialization=783, filtered=True, clean=True, batch_size=100, dataset='public', proofread_only=True) #getting all downstream connectivity gets all connectivity.
+            batch_df = flywire.get_connectivity(batch, upstream=False, downstream=True, materialization=materialization, filtered=True, clean=True, batch_size=100, dataset=dataset, proofread_only=True) #getting all downstream connectivity gets all connectivity.
             batch_df = batch_df[batch_df['post'].isin(accessions)][batch_df.weight > threshold] #filter out connections below threshold + only need connections to downstream partners which exist in vfb
             conn_df=pd.concat([conn_df, batch_df]) #add batch to main conn_df
         conn_df.rename(columns={'pre': 'source', 'post': 'target'}, inplace=True)
