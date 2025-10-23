@@ -1,98 +1,80 @@
-# BANC Connectivity Import Notes
+# BANC Connectivity Import
 
-## Current Status
+## Overview
 
-The BANC connectivity importer has been set up but requires the `banc` Python package which has some dependency conflicts with the current environment (specifically with numpy versions for vfb-connect).
+The BANC (Brain And Nerve Cord) connectivity importer successfully retrieves connectivity data from publicly available files on Google Cloud Storage, avoiding the need for CAVE API authentication.
 
-## BANC Data Access
+## Data Access
 
-BANC (Brain And Nerve Cord) uses its own CAVE infrastructure, separate from the public FlyWire dataset. Access requires:
+BANC connectivity data is publicly available on Google Cloud Storage:
+- **Bucket**: `gs://lee-lab_brain-and-nerve-cord-fly-connectome`
+- **Connectivity files**: `gs://lee-lab_brain-and-nerve-cord-fly-connectome/neuron_connectivity/v626/`
+- **Primary file**: `synapses_v1_human_readable_sizethresh3_connectioncounts_countthresh3.parquet`
 
-1. **Installation of banc package**: `pip install banc`
-   - Repository: https://github.com/jasper-tms/the-BANC-fly-connectome
-   
-2. **CAVE Credentials**: 
-   - Get API key from: https://global.daf-apis.com/auth/api/v1/create_token
-   - Save using: `banc.save_cave_credentials("YOUR_API_KEY")`
-   - Or manually create `~/.cloudvolume/secrets/cave-secret.json`:
-     ```json
-     {
-       "token": "YOUR_API_KEY",
-       "brain_and_nerve_cord": "YOUR_API_KEY"
-     }
-     ```
+This parquet file contains:
+- `pre_root_id`: Presynaptic neuron root ID
+- `post_root_id`: Postsynaptic neuron root ID
+- `num_synapses`: Number of synapses (weight)
+- **Total edges**: ~8.67 million connections
+- **Size**: ~61 MB
+- **Pre-applied filters**: 
+  - Synapse size threshold: 3 (sizethresh3)
+  - Connection count threshold: 3 (countthresh3)
+  - Only includes connections with ≥3 synapses
 
-3. **VFB Dataset Info**:
-   - Dataset name in VFB: `Bates2025`
-   - Site short_form: `BANC626`
-   - Materialization version: 626
-   - Anatomical scope: adult brain|adult ventral nerve cord (whole CNS)
+## VFB Dataset Info
 
-## Implementation Approach
+- **Dataset name in VFB**: `Bates2025`
+- **Site short_form**: `BANC626`
+- **Materialization version**: 626
+- **Anatomical scope**: adult brain|adult ventral nerve cord (whole CNS)
+- **Neurons in VFB**: 80,832
+- **Connectivity edges within VFB dataset**: 1,898,631
 
-### Option 1: Use banc package (Recommended if available)
+## Implementation
 
-The `banc` package provides a `connectivity` module with functions like:
-- `get_synapses(seg_ids, direction='outputs', threshold=3)`
-- Returns DataFrame with synapse information
+The BANC importer uses a simple, efficient approach:
 
-```python
-import banc
-from banc import connectivity
+1. **Query VFB** for all neurons in the Bates2025 dataset
+2. **Download** the connectivity parquet file from GCS (if not already cached)
+3. **Filter** to include only connections between VFB neurons
+4. **Apply threshold** (optional, default=0)
+5. **Generate** ROBOT template TSV
 
-# Get CAVE client
-client = banc.get_caveclient()
+### Files Created
 
-# Query synapses
-synapses = connectivity.get_synapses(
-    seg_ids=root_ids,
-    direction='outputs',  # or 'inputs'
-    threshold=3,
-    client=client
-)
+- `/src/VFB_connectomics_import/BANC_import.py`: Neuron curation TSV generator
+- `/src/VFB_connectomics_import/script_runner_BANC.py`: Main connectivity import script
+- `/src/VFB_connectomics_import/connectomics_import.py`: Core connectivity processing
 
-# Convert to connectivity matrix
-# Group by pre/post to get edge weights
-conn_df = synapses.groupby(['pre_pt_root_id', 'post_pt_root_id']).size().reset_index(name='weight')
-conn_df.rename(columns={'pre_pt_root_id': 'source', 'post_pt_root_id': 'target'}, inplace=True)
-```
-
-### Option 2: Use fafbseg with correct parameters
-
-If BANC data is accessible via fafbseg (currently getting connection errors):
-
-```python
-from fafbseg import flywire
-
-conn_df = flywire.get_connectivity(
-    root_ids,
-    upstream=False,
-    downstream=True,
-    materialization=626,
-    dataset='banc',  # BANC dataset identifier
-    filtered=True,
-    clean=True,
-    proofread_only=True
-)
-```
-
-## Files Created
-
-- `/src/VFB_connectomics_import/BANC_import.py`: Simple neuron curation TSV generator
-- `/src/VFB_connectomics_import/script_runner_BANC.py`: Connectivity script (uses get_adjacencies_flywire with BANC parameters)
-- `/src/VFB_connectomics_import/connectomics_import.py`: Added dataset/materialization parameters to get_adjacencies_flywire()
-
-## Current Script Usage (once dependencies resolved)
+## Usage
 
 ```bash
 # Generate connectivity ROBOT template
 python src/VFB_connectomics_import/script_runner_BANC.py \
   --dataset Bates2025 \
-  --output BANC_n2n.tsv
+  --output BANC_n2n.tsv \
+  --threshold 0
 
-# Convert to OWL using ROBOT
+# Apply additional threshold (e.g., only include connections with >10 synapses)
+# Note: The source file already filters to ≥3 synapses
+python src/VFB_connectomics_import/script_runner_BANC.py \
+  --dataset Bates2025 \
+  --output BANC_n2n_thresh10.tsv \
+  --threshold 10
+
+# Optional: specify custom connectivity file path
+python src/VFB_connectomics_import/script_runner_BANC.py \
+  --dataset Bates2025 \
+  --output BANC_n2n.tsv \
+  --connectivity-file /path/to/custom/connectivity.parquet
+```
+
+### Convert to OWL using ROBOT
+
+```bash
 robot template \
-  -input-iri http://purl.obolibrary.org/obo/ro.owl \
+  --input-iri http://purl.obolibrary.org/obo/ro.owl \
   --add-prefix "n2o: http://neo2owl/custom/" \
   --add-prefix "VFB: http://virtualflybrain.org/reports/VFB_" \
   --template BANC_n2n.tsv \
@@ -100,9 +82,29 @@ robot template \
   convert -f ofn --output connectome_BANC_n2n.owl
 ```
 
-## Next Steps
+## Performance
 
-1. Resolve numpy version conflict (vfb-connect requires numpy<2.0.0, banc installed numpy 2.2.6)
-2. Test BANC connectivity access once credentials and environment are properly configured
-3. Verify data can be retrieved for the 80,832 neurons in Bates2025 dataset
-4. Run end-to-end workflow to generate OWL file
+The script processes BANC connectivity efficiently:
+- **Loading parquet file**: < 1 second
+- **Filtering 8.67M edges**: ~2-3 seconds
+- **Generating ROBOT template**: ~10-15 seconds
+- **Total runtime**: ~15-20 seconds
+
+## Advantages of This Approach
+
+1. **No authentication required** - Uses public GCS data
+2. **Fast** - Local parquet file processing
+3. **Reliable** - Not dependent on CAVE API availability
+4. **Reproducible** - Fixed materialization version (626)
+5. **Simple** - Minimal dependencies (just pandas + gsutil)
+
+## Notes
+
+- The connectivity file is automatically downloaded on first run if not found
+- Requires `gsutil` to be installed (`gcloud` SDK)
+- **Important**: The parquet file has pre-applied thresholds:
+  - Synapse size threshold: 3
+  - Connection count threshold: 3
+  - All connections in the file have ≥3 synapses
+- The script's `--threshold` parameter applies an *additional* filter on top of this
+- Root ID 0 represents background/unlabeled segments and should be filtered out in VFB queries

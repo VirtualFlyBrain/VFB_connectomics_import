@@ -1,4 +1,7 @@
 import argparse
+import pandas as pd
+import subprocess
+from pathlib import Path
 from connectomics_import import ConnectomicsImport
 
 
@@ -10,7 +13,23 @@ def parse_args():
     parser.add_argument("--db", type=str, default="BANC626", help="Database cross-reference prefix (default: BANC626)")
     parser.add_argument("--threshold", type=int, default=0, help="Minimum synaptic weight threshold (default: 0)")
     parser.add_argument("--output", type=str, required=True, help="Output TSV path for ROBOT template")
+    parser.add_argument("--connectivity-file", type=str, 
+                        default="synapses_v1_human_readable_sizethresh3_connectioncounts_countthresh3.parquet",
+                        help="Path to BANC connectivity parquet file (default: downloads from GCS if not found)")
     return parser.parse_args()
+
+
+def download_connectivity_file(filepath):
+    """Download the BANC connectivity file from Google Cloud Storage if it doesn't exist."""
+    if not Path(filepath).exists():
+        print(f"Connectivity file not found. Downloading from Google Cloud Storage...")
+        gcs_path = "gs://lee-lab_brain-and-nerve-cord-fly-connectome/neuron_connectivity/v626/synapses_v1_human_readable_sizethresh3_connectioncounts_countthresh3.parquet"
+        try:
+            subprocess.run(["gsutil", "cp", gcs_path, filepath], check=True)
+            print(f"Downloaded connectivity file to: {filepath}")
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Failed to download connectivity file from GCS: {e}")
+    return filepath
 
 
 def main():
@@ -24,10 +43,33 @@ def main():
     accessions = ci.get_accessions_from_vfb(dataset=args.dataset, db=args.db)
     print(f"Found {len(accessions)} accessions")
     
-    # Get connectivity data from BANC using get_adjacencies_flywire with dataset='banc' and materialization=626
-    print(f"Fetching BANC connectivity (threshold={args.threshold})...")
-    conn_df = ci.get_adjacencies_flywire(accessions, threshold=args.threshold, dataset='banc', materialization=626)
-    print(f"Retrieved {len(conn_df)} connectivity edges")
+    # Download connectivity file if needed
+    connectivity_file = download_connectivity_file(args.connectivity_file)
+    
+    # Load BANC connectivity data from parquet file
+    print(f"Loading BANC connectivity from: {connectivity_file}")
+    all_conn_df = pd.read_parquet(connectivity_file)
+    print(f"Loaded {len(all_conn_df)} total connectivity edges from file")
+    
+    # Filter to only include connections within our VFB accessions
+    accessions_set = set(accessions)
+    conn_df = all_conn_df[
+        all_conn_df['pre_root_id'].isin(accessions_set) & 
+        all_conn_df['post_root_id'].isin(accessions_set)
+    ].copy()
+    print(f"Filtered to {len(conn_df)} edges within VFB dataset")
+    
+    # Apply threshold
+    if args.threshold > 0:
+        conn_df = conn_df[conn_df['num_synapses'] > args.threshold]
+        print(f"After threshold={args.threshold}: {len(conn_df)} edges remain")
+    
+    # Rename columns to match expected format
+    conn_df.rename(columns={
+        'pre_root_id': 'source',
+        'post_root_id': 'target',
+        'num_synapses': 'weight'
+    }, inplace=True)
     
     # Generate ROBOT template
     print("Generating ROBOT template...")

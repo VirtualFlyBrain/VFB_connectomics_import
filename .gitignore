@@ -5,3 +5,4 @@ src/VFB_connectomics_import/*.pyc
 src/VFB_connectomics_import/tests/__pycache__
 src/VFB_connectomics_import/tests/*.pyc
 .env
+synapses_v1_human_readable_sizethresh3_connectioncounts_countthresh3.parquet
