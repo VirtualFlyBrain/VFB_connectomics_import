@@ -73,14 +73,28 @@ python src/VFB_connectomics_import/script_runner_BANC.py \
 ### Convert to OWL using ROBOT
 
 ```bash
-robot template \
+# Download ROBOT if not already installed
+curl -L https://github.com/ontodev/robot/releases/download/v1.9.6/robot.jar -o /tmp/robot.jar
+
+# Generate OWL file from ROBOT template
+java -jar /tmp/robot.jar template \
   --input-iri http://purl.obolibrary.org/obo/ro.owl \
   --add-prefix "n2o: http://neo2owl/custom/" \
   --add-prefix "VFB: http://virtualflybrain.org/reports/VFB_" \
   --template BANC_n2n.tsv \
   annotate --ontology-iri http://virtualflybrain.org/data/VFB/OWL/BANC_import.owl \
-  convert -f ofn --output connectome_BANC_n2n.owl
+  convert -f ofn --output src/VFB_connectomics_import/OWL/connectome_BANC_n2n.owl
+
+# Compress the OWL file (reduces from ~430 MB to ~11 MB)
+gzip -9 src/VFB_connectomics_import/OWL/connectome_BANC_n2n.owl
+
+# Verify compressed file integrity
+gunzip -t src/VFB_connectomics_import/OWL/connectome_BANC_n2n.owl.gz
 ```
+
+**Output files:**
+- `src/VFB_connectomics_import/OWL/connectome_BANC_n2n.owl`: 430 MB (uncompressed OWL)
+- `src/VFB_connectomics_import/OWL/connectome_BANC_n2n.owl.gz`: 11 MB (compressed, 97.4% reduction)
 
 ## Performance
 
