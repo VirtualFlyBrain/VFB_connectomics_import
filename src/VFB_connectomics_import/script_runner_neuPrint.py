@@ -1,5 +1,6 @@
 from connectomics_import import ConnectomicsImport
 import argparse
+import sys
 
 #Setup arguments for argparse to allow input of ds, doi and filepaths in terminal
 parser = argparse.ArgumentParser(description='Script accepts a VFB dataset name and external database login details (neuprint/CATMAID (only neuprint currently)) and returns the neuron-neuron connectivity between the neurons in the dataset. A threshold can be set to filter out connections at or below the threshold (default=1).')
@@ -33,6 +34,15 @@ ci=ConnectomicsImport(neuprint_endpoint=neuprint_endpoint,
                       neuprint_token=neuprint_token)
 
 accessions=ci.get_accessions_from_vfb(dataset)
+
+# Check if any accessions were found
+if not accessions:
+    print(f"ERROR: No neuron accessions found for dataset '{dataset}'. Cannot proceed with connectivity import.")
+    print("Please verify that:")
+    print("  1. The dataset name is correct")
+    print("  2. The dataset exists in the VFB knowledge base")
+    print("  3. Neurons in the dataset have NeuPrint cross-references")
+    sys.exit(1)
 
 conn_df=ci.get_adjacencies_neuprint(accessions=accessions, threshold=threshold)
 

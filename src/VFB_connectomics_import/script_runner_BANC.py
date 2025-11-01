@@ -1,6 +1,7 @@
 import argparse
 import pandas as pd
 import subprocess
+import sys
 from pathlib import Path
 from connectomics_import import ConnectomicsImport
 
@@ -42,6 +43,15 @@ def main():
     print(f"Fetching accessions from VFB for dataset: {args.dataset}")
     accessions = ci.get_accessions_from_vfb(dataset=args.dataset, db=args.db)
     print(f"Found {len(accessions)} accessions")
+    
+    # Check if any accessions were found
+    if not accessions:
+        print(f"ERROR: No neuron accessions found for dataset '{args.dataset}' with db '{args.db}'. Cannot proceed with connectivity import.")
+        print("Please verify that:")
+        print("  1. The dataset name is correct")
+        print("  2. The dataset exists in the VFB knowledge base")
+        print(f"  3. Neurons in the dataset have '{args.db}' cross-references")
+        sys.exit(1)
     
     # Download connectivity file if needed
     connectivity_file = download_connectivity_file(args.connectivity_file)

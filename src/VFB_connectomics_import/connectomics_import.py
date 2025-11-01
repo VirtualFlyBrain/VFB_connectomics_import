@@ -30,12 +30,29 @@ class ConnectomicsImport:
         else: self.neuprint_client=None
         self.vc = VfbConnect(neo_endpoint="http://kb.virtualflybrain.org")
 
-    def get_accessions_from_vfb(self, dataset, db=None):
-        #flywire needs to know the version to get the correct accessions
-        if db:
+    def get_accessions_from_vfb(self, dataset=None, db=None):
+        """
+        Get neuron accessions from VFB knowledge base.
+        
+        Parameters:
+        - dataset: DataSet short_form (e.g., 'Dorkenwald2023', 'Bates2025')
+        - db: Site short_form (e.g., 'flywire783', 'BANC626', 'catmaid_fafb')
+        
+        For CATMAID instances, only db should be provided (dataset=None) as CATMAID
+        sites can contain neurons from multiple datasets.
+        """
+        if dataset and db:
+            # Query for neurons from specific dataset with specific site cross-references
             query = 'MATCH (ds {short_form:"' + dataset + '"})-[:has_source]-(n)-[a:database_cross_reference|hasDbXref]-(:Site {short_form: "' + db + '"}) RETURN DISTINCT a.accession[0]'
-        else:
+        elif db and not dataset:
+            # Query for all neurons with cross-references to a specific site (e.g., CATMAID)
+            query = 'MATCH (n)-[a:database_cross_reference|hasDbXref]-(:Site {short_form: "' + db + '"}) RETURN DISTINCT a.accession[0]'
+        elif dataset and not db:
+            # Query for neurons from specific dataset with any site cross-references
             query = 'MATCH (ds {short_form:"' + dataset + '"})-[:has_source]-(n)-[a:database_cross_reference|hasDbXref]-(:Site) RETURN DISTINCT a.accession[0]'
+        else:
+            raise ValueError("At least one of dataset or db parameters must be provided")
+            
         accessions = self.vc.nc.commit_list([query])
         
         # Handle empty results

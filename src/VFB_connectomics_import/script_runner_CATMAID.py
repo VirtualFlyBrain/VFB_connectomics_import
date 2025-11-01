@@ -43,7 +43,19 @@ output_file=args['output_file']
 
 ci=ConnectomicsImport(catmaid_endpoint=catmaid_endpoint)
 
-accessions=ci.get_accessions_from_vfb(dataset)
+# For CATMAID, the 'dataset' parameter is actually the Site short_form (e.g., 'catmaid_fafb')
+# We need to query across all datasets that use this CATMAID instance
+# So we pass dataset as the 'db' parameter to match on Site nodes
+accessions=ci.get_accessions_from_vfb(dataset=None, db=dataset)
+
+# Check if any accessions were found
+if not accessions:
+    print(f"ERROR: No neuron accessions found for CATMAID site '{dataset}'. Cannot proceed with connectivity import.")
+    print("Please verify that:")
+    print("  1. The CATMAID site name is correct (e.g., 'catmaid_fafb', 'catmaid_l1em')")
+    print("  2. The VFB knowledge base has neurons with cross-references to this CATMAID site")
+    print("  3. The Site node exists in VFB with the correct short_form")
+    sys.exit(1)
 
 conn_df=ci.get_adjacencies_CATMAID(accessions, threshold=threshold)
 

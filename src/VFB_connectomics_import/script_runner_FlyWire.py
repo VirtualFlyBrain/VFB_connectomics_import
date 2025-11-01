@@ -1,4 +1,5 @@
 from connectomics_import import ConnectomicsImport
+import sys
 # import argparse
 #
 # #Setup arguments for argparse to allow input of ds, doi and filepaths in terminal
@@ -28,6 +29,15 @@ db = 'flywire783'
 ci=ConnectomicsImport()
 
 accessions=ci.get_accessions_from_vfb(dataset, db)
+
+# Check if any accessions were found
+if not accessions:
+    print(f"ERROR: No neuron accessions found for dataset '{dataset}' with db '{db}'. Cannot proceed with connectivity import.")
+    print("Please verify that:")
+    print("  1. The dataset name is correct")
+    print("  2. The dataset exists in the VFB knowledge base")
+    print(f"  3. Neurons in the dataset have '{db}' cross-references")
+    sys.exit(1)
 
 conn_df=ci.get_adjacencies_flywire(accessions=accessions, threshold=threshold, batchsize=1000)
 
