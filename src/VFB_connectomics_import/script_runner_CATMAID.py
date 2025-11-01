@@ -1,3 +1,16 @@
+import sys
+
+# Fail fast on Python versions that are too old for upstream deps (neuprint uses
+# structural pattern matching introduced in Python 3.10).
+if sys.version_info < (3, 10):
+	raise RuntimeError(
+		"This script requires Python 3.10+ (found Python %d.%d). "
+		"Please upgrade the interpreter in CI or pin 'neuprint-python' to a "
+		"compatible version in requirements.txt." % (
+			sys.version_info.major, sys.version_info.minor
+		)
+	)
+
 from connectomics_import import ConnectomicsImport
 import argparse
 

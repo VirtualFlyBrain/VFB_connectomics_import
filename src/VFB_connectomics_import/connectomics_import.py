@@ -1,3 +1,16 @@
+import sys
+
+# Require Python 3.10+ because some upstream dependencies (e.g. neuprint)
+# use structural pattern matching ("match"), which is unavailable in 3.9.
+if sys.version_info < (3, 10):
+    raise RuntimeError(
+        "This project requires Python 3.10+ (found Python %d.%d). "
+        "Please upgrade the interpreter in CI or pin 'neuprint-python' to a "
+        "version compatible with Python <3.10 in requirements.txt." % (
+            sys.version_info.major, sys.version_info.minor
+        )
+    )
+
 import neuprint
 from neuprint import Client
 from neuprint import fetch_adjacencies
