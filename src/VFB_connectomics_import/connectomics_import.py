@@ -43,13 +43,14 @@ class ConnectomicsImport:
         """
         if dataset and db:
             # Query for neurons from specific dataset with specific site cross-references
-            query = 'MATCH (ds {short_form:"' + dataset + '"})-[:has_source]-(n)-[a:database_cross_reference|hasDbXref]-(:Site {short_form: "' + db + '"}) RETURN DISTINCT a.accession[0]'
+            # Include neuron details for better debugging
+            query = 'MATCH (ds {short_form:"' + dataset + '"})-[:has_source]-(n)-[a:database_cross_reference|hasDbXref]-(:Site {short_form: "' + db + '"}) RETURN DISTINCT a.accession[0] as accession, n.short_form as neuron_id, n.label as neuron_label'
         elif db and not dataset:
             # Query for all neurons with cross-references to a specific site (e.g., CATMAID)
-            query = 'MATCH (n)-[a:database_cross_reference|hasDbXref]-(:Site {short_form: "' + db + '"}) RETURN DISTINCT a.accession[0]'
+            query = 'MATCH (n)-[a:database_cross_reference|hasDbXref]-(:Site {short_form: "' + db + '"}) RETURN DISTINCT a.accession[0] as accession, n.short_form as neuron_id, n.label as neuron_label'
         elif dataset and not db:
             # Query for neurons from specific dataset with any site cross-references
-            query = 'MATCH (ds {short_form:"' + dataset + '"})-[:has_source]-(n)-[a:database_cross_reference|hasDbXref]-(:Site) RETURN DISTINCT a.accession[0]'
+            query = 'MATCH (ds {short_form:"' + dataset + '"})-[:has_source]-(n)-[a:database_cross_reference|hasDbXref]-(:Site) RETURN DISTINCT a.accession[0] as accession, n.short_form as neuron_id, n.label as neuron_label'
         else:
             raise ValueError("At least one of dataset or db parameters must be provided")
             
@@ -61,14 +62,54 @@ class ConnectomicsImport:
             print(f"Query: {query}")
             return []
         
-        df = pd.DataFrame(accessions[0]['data'])
-        if 'row' not in df.columns:
-            print(f"Warning: Query returned data but no 'row' column. Columns: {df.columns.tolist()}")
+        df = pd.DataFrame.from_records([r['row'] for r in accessions[0]['data']], 
+                                       columns=['accession', 'neuron_id', 'neuron_label'])
+        
+        if df.empty:
+            print(f"Warning: Query returned data but resulted in empty DataFrame")
             print(f"Data: {accessions[0]['data']}")
             return []
+        
+        total_count = len(df)
+        
+        # Identify neurons with missing accessions
+        missing_df = df[df['accession'].isna()]
+        none_count = len(missing_df)
+        
+        if none_count > 0:
+            print(f"\nWARNING: {none_count} out of {total_count} neurons have missing accessions (None values) for " + 
+                  (f"dataset '{dataset}'" if dataset else "") + 
+                  (f" and db '{db}'" if db else f"db '{db}'" if db else ""))
+            print(f"These neurons will be excluded from connectivity import. Please investigate data quality.\n")
+            print("Neurons with missing accessions:")
+            print("-" * 80)
+            for idx, row in missing_df.iterrows():
+                neuron_id = row['neuron_id'] if pd.notna(row['neuron_id']) else 'UNKNOWN'
+                neuron_label = row['neuron_label'] if pd.notna(row['neuron_label']) else 'No label'
+                print(f"  - {neuron_id}: {neuron_label}")
+            print("-" * 80)
+            print()
+        
+        # Get valid accessions
+        valid_df = df[df['accession'].notna()]
+        
+        if valid_df.empty:
+            print(f"ERROR: All {total_count} accessions were None - cannot proceed!")
+            return []
+        
+        accessions_list = valid_df['accession'].tolist()
+        
+        # Convert to integers
+        try:
+            accessions_list = list(map(int, accessions_list))
+            print(f"Successfully retrieved {len(accessions_list)} valid accessions" + 
+                  (f" from dataset '{dataset}'" if dataset else "") +
+                  (f" with db '{db}'" if db else ""))
+        except (ValueError, TypeError) as e:
+            print(f"Error converting accessions to integers: {e}")
+            print(f"Sample accessions: {accessions_list[:10]}")
+            return []
             
-        accessions_list = list(df['row'].explode())
-        accessions_list = list(map(int, accessions_list))
         return accessions_list #call function
 
     ##get_adjacencies functions must return a df of 'source' - xref (bodyId), 'target' - xref (bodyId), 'weight'- int
