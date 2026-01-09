@@ -6,3 +6,4 @@ python-catmaid
 jsonpath-rw
 pyyaml
 fafbseg
+urllib3>=2.6.3 # not directly required, pinned by Snyk to avoid a vulnerability
