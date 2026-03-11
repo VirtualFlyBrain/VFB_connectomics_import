@@ -189,6 +189,20 @@ class ConnectomicsImport:
         vfb_ids = self.vc.neo_query_wrapper.xref_2_vfb_id(db=db).items()
         vfb_ids = {k: v[0]['vfb_id'] for (k, v) in vfb_ids}
         conn_df = conn_df.applymap(str)
+        
+        # Define priority function for sorting
+        def get_priority(id_str):
+            if id_str.startswith('FBbt_'):
+                return 0
+            elif id_str.startswith('VFB_'):
+                return 1
+            else:
+                return 2
+        
+        # Add priority column and sort
+        conn_df['priority'] = conn_df['source'].apply(get_priority)
+        conn_df = conn_df.sort_values('priority').drop('priority', axis=1)
+        
         conn_df['source']=conn_df['source'].map(vfb_ids)
         conn_df['target']=conn_df['target'].map(vfb_ids)
         conn_df.rename(columns={'source': 'ID', 'target': 'FACT', 'weight': 'Weight'}, inplace=True)
