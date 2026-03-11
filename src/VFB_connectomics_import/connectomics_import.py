@@ -11,9 +11,7 @@ if sys.version_info < (3, 10):
         )
     )
 
-import neuprint
-from neuprint import Client
-from neuprint import fetch_adjacencies
+
 import pandas as pd
 from vfb_connect.cross_server_tools import VfbConnect
 from fafbseg import flywire
@@ -22,8 +20,11 @@ from caveclient import CAVEclient
 class ConnectomicsImport:
     def __init__(self, neuprint_endpoint=None, neuprint_dataset=None, neuprint_token=None, catmaid_endpoint=None):
         if neuprint_endpoint and neuprint_dataset and neuprint_token:
+            import neuprint
+            from neuprint import fetch_adjacencies
             self.neuprint_client=neuprint.Client(neuprint_endpoint, dataset=neuprint_dataset, token=neuprint_token)
         elif catmaid_endpoint:
+            import pymaid
             self.rm=pymaid.CatmaidInstance(catmaid_endpoint, '', '', '')
             #no self?
         else: self.neuprint_client=None
@@ -146,7 +147,7 @@ class ConnectomicsImport:
         return conn_df
 
     def get_adjacencies_banc(self, accessions, threshold=0, batchsize=5000, materialization=626):
-        """Get connectivity data from BANC dataset using CAVE client."""
+        """Get connectivity data from BANC dataset using CAVE ."""
         # Initialize CAVE client for BANC
         client = CAVEclient('brain_and_nerve_cord')
         client.materialize.version = materialization
