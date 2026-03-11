@@ -17,7 +17,6 @@ from neuprint import fetch_adjacencies
 import pandas as pd
 from vfb_connect.cross_server_tools import VfbConnect
 from fafbseg import flywire
-import pymaid
 from caveclient import CAVEclient
 
 class ConnectomicsImport:
@@ -123,6 +122,7 @@ class ConnectomicsImport:
         return conn_df
 
     def get_adjacencies_CATMAID(self, accessions, threshold=0):
+        import pymaid
         conn_df = pymaid.get_edges(accessions)
         conn_df = conn_df[conn_df.weight > threshold]
         return conn_df
