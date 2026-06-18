@@ -21,12 +21,12 @@ dataset = args['dataset']
 output_file = args['output_file']
 
 neuprint_endpoint = 'https://neuprint.janelia.org'
-neuprint_dataset = 'optic-lobe:v1.0'
+neuprint_dataset = 'male-cns:v0.9'
 neuprint_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbTcxQGNhbS5hYy51ayIsImxldmVsIjoibm9hdXRoIiwiaW1hZ2UtdXJsIjoiaHR0cHM6Ly9saDMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL2EvQUNnOG9jTFhRZzltNUpUWjVibmdjRl9lSXROa1cxQUtVcU5IWmpfVENJWXl1VnZwT19mUHJBPXM5Ni1jP3N6PTUwP3N6PTUwIiwiZXhwIjoxOTAxNjQ3MDMwfQ.bqzIwWAGNEcrpvaRX_M-U33d46xfTK7XxVKhz6P6BqQ'
 threshold = 1
-dataset = 'Nern2024'
-output_file = 'Nern2024_n_2_n.tsv'
-db='neuprint_JRC_OpticLobe_v1_0'
+dataset = 'Berg2025'
+output_file = 'Berg2025_n_2_n.tsv'
+db='male-cns_v0_9'
 
 ci=ConnectomicsImport(neuprint_endpoint=neuprint_endpoint,
                       neuprint_dataset=neuprint_dataset,

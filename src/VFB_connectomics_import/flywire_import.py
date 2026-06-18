@@ -85,8 +85,11 @@ transformed_neuron = navis.xform_brain(k, source='FLYWIRE', via='JRCFIB2022M' ,t
 #plot transformed against mesh
 navis.plot3d([transformed_neuron, flybrains.JRC2018U],backend='plotly').show(renderer='browser')
 
+swc = navis.read_swc('/Users/adm/Downloads/volume(3).swc')
+swc2 = navis.read_swc('/Users/adm/Downloads/volume(4).swc')
 
-
+obj = navis.read_mesh('/Users/adm/Downloads/volume_man(3).obj')
+navis.plot3d([swc,swc2, flybrains.JRC2018U],backend='plotly').show(renderer='browser')
 
 
 
@@ -224,7 +227,7 @@ for index, result in query_data_df.iterrows():
         print(f"Warning: Failed to process neuron {body_id}. Error: {e}")
     try:
         if not os.path.exists(mesh_filename) or not os.path.exists(nrrd_filename):
-            mesh_neuron = neu.fetch_mesh_neuron(body_id, missing_mesh='warn', lod=None)
+            mesh_neuron = flywire.get_mesh_neuron(body_id, dataset='flat_783', lod=2)
 
             # Transform neuron mesh data from FLYWIRE to JRC2018U (needs via to work currently)
             transformed_mesh_neuron = navis.xform_brain(mesh_neuron, source='FLYWIRE', via='JRCFIB2022M' ,target='JRC2018U')
@@ -265,3 +268,147 @@ for index, result in query_data_df.iterrows():
         print(f"Written to {nrrd_filename.replace('/IMAGE_WRITE/', 'http://www.virtualflybrain.org/data/')}")
     except Exception as e:
         print(f"Warning: Failed to create NRRD for neuron {body_id}. Error: {e}")
+
+
+###archiving old version
+#!.pyenv/bin/python3.9
+
+import os
+import glob
+import numpy as np
+import navis
+import flybrains
+import pandas as pd
+import cloudvolume
+import sys
+from vfb_connect.cross_server_tools import VfbConnect
+import multiprocessing
+from multiprocessing import Pool
+import threading
+from fafbseg import flywire
+
+def delete_volume_files(local_folder_path):
+    """
+    Delete all files matching the pattern "volume.*" in the specified folder.
+    :param local_folder_path: str, path to the folder containing the files to delete
+    """
+    # Ensure the path ends with a separator
+    if not local_folder_path.endswith(os.sep):
+        local_folder_path += os.sep
+
+    # Generate file paths for all files matching the pattern "volume.*" in the specified folder
+    file_paths = glob.glob(f'{local_folder_path}volume*')
+    file_paths += glob.glob(f'{local_folder_path}thumbnail*')
+    # Delete each file
+    for file_path in file_paths:
+        try:
+            os.remove(file_path)
+            print(f'Successfully deleted {file_path}')
+        except Exception as e:
+            print(f'Could not delete {file_path}: {e}')
+
+# Download the JRC transforms
+flybrains.download_jrc_transforms()
+
+# Register the downloaded transforms
+flybrains.register_transforms()
+
+# Setup connection to the VFB Neo4j database
+kbw = VfbConnect(neo_endpoint='http://kb.virtualflybrain.org:80', neo_credentials=('neo4j', os.environ.get('password')))
+
+# Setup flywire
+flywire.set_chunkedgraph_secret("47576875e49eeb999396a0e73de0cf31")
+
+# Your Cypher query
+cypher_query = """
+MATCH (d:DataSet {short_form:'Dorkenwald2023'})<-[:has_source]-(i:Individual)<-[:depicts]-(ic:Individual)
+-[r:in_register_with]->(tc:Template)
+RETURN r.filename[0] as root_id, r.folder[0] as folder
+"""
+
+# Execute the Cypher query using the commit_list method
+output = kbw.nc.commit_list(statements=[cypher_query])
+
+# Check for errors in the response
+if output is False or not output:
+    print("An error occurred while executing the Cypher query.")
+    exit(1)  # Exit the script in case of an error
+
+# Access the data key of the first item in the output list
+query_data_df=pd.DataFrame(output[0]['data'])['row'].apply(pd.Series)
+
+# Get the total number of items to process
+total_items = len(query_data_df[0])
+
+# Process the results
+for index, result in query_data_df.iterrows():
+    print(f"Processing item {index + 1} of {total_items}")
+    # Access the row key of each result item to get the root_id and folder values
+    root_id, folder_url = result
+    folder_url = folder_url.replace('http://www.virtualflybrain.org/data/', '/IMAGE_WRITE/')
+
+    # Create the local folder if it doesn't exist
+    local_folder_path = os.path.dirname(folder_url)
+    os.makedirs(local_folder_path, exist_ok=True)
+
+    # Path for the output SWC file
+    filename = os.path.join(local_folder_path, f"volume.swc")
+
+    # Path for the output obj file
+    mesh_filename = os.path.join(local_folder_path, f"volume_man.obj")
+
+    # Check if the output file already exists, if so, skip to the next iteration
+    if os.path.exists(filename) and os.path.exists(mesh_filename):
+        # Redo files if requested
+        if os.environ.get('redo') == 'true':
+            print(f"File for neuron {root_id} swc and obj already exists. Removing old versions...")
+            delete_volume_files(local_folder_path)
+        else:
+            print(f"File for neuron {root_id} swc or obj already exists. Skipping...")
+            continue #skipping nrrd for now
+            if os.path.exists(nrrd_filename):
+                continue
+
+    if os.path.exists(filename) or os.path.exists(mesh_filename):
+        # Redo files if requested
+        if os.environ.get('redo') == 'true':
+            print(f"File for neuron {root_id} swc or obj already exists. Removing old versions...")
+            delete_volume_files(local_folder_path)
+
+    try:
+        if not os.path.exists(filename):
+            # Download skeleton
+            ### this needs to be the path to the local 'sk_lod1_630_healed_ds2' folder + the root_id - ex 'c/sk_lod1_630_healed_ds2/720575940621280688.swc'
+            neuron = navis.read_swc('sk_lod1_630_healed_ds2' + root_id)
+
+            # Transform neuron data from FlyWire to JRC2018U
+            transformed_neuron = navis.xform_brain(neuron, source='FLYWIRE', target='JRC2018U')
+            # Check for warnings
+            if not transformed_neuron:
+                print(f"Warning: No skeleton data available for neuron {root_id}. Possibly outside the H5 deformation field.")
+                continue  # Skip to the next iteration
+            # Save to SWC file
+            navis.write_swc(transformed_neuron, filename)
+            print(f"Written to {filename.replace('/IMAGE_WRITE/', 'http://www.virtualflybrain.org/data/')}")
+        else:
+            print(f"File for neuron {root_id} swc already exists. Skipped...")
+    except Exception as e:
+        print(f"Warning: Failed to process neuron {root_id}. Error: {e}")
+    try:
+        if not os.path.exists(mesh_filename):
+            # Download mesh
+            mesh_neuron = flywire.get_mesh_neuron(root_id, dataset='flat_630', omit_failures=True)
+
+            # Transform neuron mesh data from FlyWire to JRC2018U
+            transformed_mesh_neuron = navis.xform_brain(mesh_neuron, source='FLYWIRE', target='JRC2018U')
+            # Check for warnings
+            if not transformed_mesh_neuron:
+                print(f"Warning: No mesh data available for neuron {root_id}. Possibly outside the H5 deformation field.")
+                continue  # Skip to the next iteration
+            # Save to obj file
+            navis.write_mesh(transformed_mesh_neuron, mesh_filename)
+            print(f"Written to {mesh_filename.replace('/IMAGE_WRITE/', 'http://www.virtualflybrain.org/data/')}")
+        else:
+            print(f"File for neuron {root_id} obj already exists. Skipped...")
+    except Exception as e:
+        print(f"Warning: Failed to process neuron {root_id}. Error: {e}")

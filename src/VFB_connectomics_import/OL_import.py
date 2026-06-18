@@ -107,13 +107,13 @@ transformed_mesh_neuron_df = navis.xform_brain(mesh_neuron_list[0], source='JRCF
 navis.plot3d([transformed_mesh_neuron_df, flybrains.JRC2018U]).show(renderer='browser')
 
 ### Testing skelmesh loader output
-swc=navis.read_swc('/Users/adm/Downloads/volume(1).swc')
-mesh=navis.read_mesh('/Users/adm/Downloads/volume_man(1).obj')
+swc=navis.read_swc('/Users/adm/Downloads/volume(7).swc')
+mesh=navis.read_mesh('/Users/adm/Downloads/volume_man.obj')
 nrrd=navis.read_nrrd('/Users/adm/Downloads/volume.nrrd')
 
 navis.plot3d([mesh, swc, nrrd, flybrains.JRC2018U]).show(renderer='browser')
 
 mesh2=navis.read_mesh('/Users/adm/Downloads/volume_man(2).obj')
 swc2=navis.read_swc('/Users/adm/Downloads/volume(2).swc')
-navis.plot3d([mesh2, swc2, flybrains.JRC2018U]).show(renderer='browser')
+navis.plot3d([mesh, swc, nrrd, flybrains.JRC2018U]).show(renderer='browser')
 mesh2

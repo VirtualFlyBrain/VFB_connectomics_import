@@ -74,6 +74,22 @@ class ConnectomicsImport:
         robot_template_df = pd.concat([robot_template_df, conn_df], ignore_index=True)
         return robot_template_df
 
+    def generate_n_r_template(self, db, conn_df):
+        '''for this we need the ID (source), FACT 'has_presynaptic_terminal_in'/'has_postsynaptic_terminal_in' (target), TYPE (owl:NamedIndividual), AT n2o:weight^^xsd:integer (Weight)'''# - do we need t bars?
+        robot_template_down_df = pd.DataFrame({'ID': ['ID'], 'FACT': ["has_presynaptic_terminal_in"], 'TYPE': ['TYPE'], 'downstream': ['>AT n2o:downstream^^xsd:integer'], 'Tbars' : ['>AT n2o:Tbars^^xsd:integer']})
+        robot_template_up_df = pd.DataFrame({'ID': ['ID'], 'FACT': ["has_postsynaptic_terminal_in"], 'TYPE': ['TYPE'], 'upstream': ['>AT n2o:upstream^^xsd:integer']})
+        vfb_ids = self.vc.neo_query_wrapper.xref_2_vfb_id(db=db).items()
+        vfb_ids = {k: v[0]['vfb_id'] for (k, v) in vfb_ids}
+        conn_df = conn_df.applymap(str)
+        conn_df['source']=conn_df['source'].map(vfb_ids)
+        conn_df['target']=conn_df['target'].map(vfb_ids)
+        conn_df.rename(columns={'source': 'ID', 'target': 'FACT', 'weight': 'Weight'}, inplace=True)
+        conn_df['ID']=conn_df['ID'].str.replace('_', ':')
+        conn_df['FACT']=conn_df['FACT'].str.replace('_', ':')
+        conn_df['TYPE']='owl:NamedIndividual'
+        robot_template_df = pd.concat([robot_template_df, conn_df], ignore_index=True)
+        return robot_template_df
+
 
 
 

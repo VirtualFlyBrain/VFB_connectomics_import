@@ -1,2 +1,9 @@
 .idea
 **/.DS_Store
+.venv/
+
+# Large generated/source artifacts — OWL outputs are committed zipped (*.owl.zip)
+# in src/VFB_connectomics_import/OWL/, never as raw multi-GB files.
+*.owl
+*_n_2_n.tsv
+* copy.*
