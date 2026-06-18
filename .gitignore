@@ -6,3 +6,10 @@ src/VFB_connectomics_import/tests/__pycache__
 src/VFB_connectomics_import/tests/*.pyc
 .env
 synapses_v1_human_readable_sizethresh3_connectioncounts_countthresh3.parquet
+.venv/
+
+# Large generated/source artifacts — OWL outputs are committed compressed
+# (*.owl.gz / *.owl.zip) in src/VFB_connectomics_import/OWL/, never as raw multi-GB files.
+*.owl
+*_n_2_n.tsv
+* copy.*
