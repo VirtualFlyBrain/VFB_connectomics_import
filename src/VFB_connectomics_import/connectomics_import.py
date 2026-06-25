@@ -21,7 +21,6 @@ class ConnectomicsImport:
     def __init__(self, neuprint_endpoint=None, neuprint_dataset=None, neuprint_token=None, catmaid_endpoint=None):
         if neuprint_endpoint and neuprint_dataset and neuprint_token:
             import neuprint
-            from neuprint import fetch_adjacencies
             self.neuprint_client=neuprint.Client(neuprint_endpoint, dataset=neuprint_dataset, token=neuprint_token)
         elif catmaid_endpoint:
             import pymaid
@@ -114,6 +113,7 @@ class ConnectomicsImport:
 
     ##get_adjacencies functions must return a df of 'source' - xref (bodyId), 'target' - xref (bodyId), 'weight'- int
     def get_adjacencies_neuprint(self, accessions, threshold=1, testmode=False):# add testmode?
+        from neuprint import fetch_adjacencies
         #fetch neuron-neuron connectivity for only between the accessions and only within PRIMARY rois and collapse rois to total
         neuron_df, conn_df = fetch_adjacencies(sources=accessions, targets=accessions)
         conn_df = conn_df.groupby(['bodyId_pre', 'bodyId_post'], as_index=False)['weight'].sum()
