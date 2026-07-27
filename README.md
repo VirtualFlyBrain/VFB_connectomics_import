@@ -6,7 +6,7 @@ A project to produce RDF/OWL representations of connectomics data for import to 
 **[Open the live dashboard →](https://virtualflybrain.github.io/VFB_connectomics_import/)**  ·  how it works: [`dashboard/`](dashboard/)
 
 <!-- CONNECTOME-DASHBOARD:START -->
-_Auto-generated 2026-07-27 20:32 UTC — see the [live dashboard](https://virtualflybrain.github.io/VFB_connectomics_import/) or [dashboard/STATUS.md](dashboard/STATUS.md)._
+_Auto-generated 2026-07-27 20:37 UTC — see the [live dashboard](https://virtualflybrain.github.io/VFB_connectomics_import/) or [dashboard/STATUS.md](dashboard/STATUS.md)._
 
 Legend: 🟩 done · 🟧 needs update · 🟥 in progress / not live · ⬜ not started · 🔳 unknown  ·  🔵 live in release · ⚪ done but not live yet
 
