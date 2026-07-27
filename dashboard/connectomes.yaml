@@ -1,0 +1,180 @@
+# =============================================================================
+# VFB Connectome Import — dashboard manifest
+# =============================================================================
+# The ONE hand-maintained file. Holds only *stable identity* facts about each
+# connectome plus a "probe" per stage-cell describing HOW to check that cell
+# automatically. Volatile status (done? live? needs update?) is NEVER typed by
+# a human — it is derived by the probes each time the dashboard is generated.
+#
+# Each stage-cell may define up to three probes:
+#   fill:   what colour the cell is                                  (required)
+#   update: optional check that flips a "done" cell to "needs update"
+#   live:   optional PDB Cypher check -> adds the "LIVE in release" dot
+#
+# Probe types (see probes.py):
+#   owl_index        - matching OWL live on the VFB data server? (auto-discovers)
+#   repo_glob        - matching artifact present in this repo?
+#   jenkins          - Jenkins job status (running -> in_progress, ok -> done)
+#   neuprint_upstream- newer version upstream? (needs NEUPRINT_TOKEN env)
+#   pdb_cypher       - query PDB; nonzero result -> live in current release
+#   manual           - fixed state written here (WILL drift — avoid)
+#
+# Fill colours:
+#   done         green   - built & uploaded to the VFB data server
+#   needs_update orange  - done, but a newer upstream version exists
+#   in_progress  red     - being worked / job running / not live yet
+#   not_started  grey    - nothing done yet
+#   unknown      hatched - a probe could not determine state
+#
+# Live dot (from PDB):  ● live now   ○ done but NOT live in this release yet
+# =============================================================================
+
+meta:
+  owl_index_url: https://virtualflybrain.org/data/VFB/OWL/
+  pdb_tx_url: https://pdb.virtualflybrain.org/db/data/transaction/commit
+  jenkins_base: ""            # TODO team: e.g. https://jenkins.virtualflybrain.org
+  github_repo: VirtualFlyBrain/VFB_connectomics_import
+
+# Matrix columns, left to right. Add a stage anytime — the generator just
+# iterates this list, so a new column is one line here + a probe per connectome.
+stages:
+  - {id: neurons, label: "Neurons loaded"}
+  - {id: skel,    label: "Skeletons / Meshes"}
+  - {id: n2n,     label: "Connectivity n→n"}
+  - {id: n2r,     label: "Connectivity n→r"}
+  - {id: types,   label: "Neuron types in ontology"}
+
+# vfb_site values below were checked against the live PDB Site list. Where the
+# TARGET version is not yet a live Site, the live dot will correctly stay OFF.
+connectomes:
+
+  - id: malecns
+    label: "male-CNS"
+    provider: neuprint
+    version: "1.0"
+    vfb_dataset: Berg2025a
+    vfb_site: male_cns_v1_0        # PDB currently has male_cns_v0_9 -> v1.0 not live yet
+    neuprint_dataset: "male-cns"
+    runner: src/VFB_connectomics_import/script_runner_neuPrint.py
+    owner: adm
+    stages:
+      neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
+      skel:    {fill: {type: jenkins, job: ""}}
+      n2n:
+        fill:   {type: owl_index, match: 'connectome_malecns.*n2n\.owl'}
+        update: {type: neuprint_upstream}
+        live:   {type: pdb_cypher}
+      n2r:  {fill: {type: owl_index, match: 'connectome_malecns.*n2r\.owl'}, live: {type: pdb_cypher}}
+      types: {fill: {type: manual, state: not_started}}
+
+  - id: manc
+    label: "MANC"
+    provider: neuprint
+    version: "1.2.1"
+    vfb_site: neuprint_JRC_Manc_1_2_1
+    neuprint_dataset: "manc"
+    runner: src/VFB_connectomics_import/MANC_import.py
+    owner:
+    stages:
+      neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
+      skel:    {fill: {type: jenkins, job: ""}}
+      n2n:
+        fill:   {type: owl_index, match: 'connectome_manc\.owl'}
+        update: {type: neuprint_upstream}
+        live:   {type: pdb_cypher}
+      n2r:  {fill: {type: owl_index, match: 'connectome_manc.*n2r\.owl'}, live: {type: pdb_cypher}}
+      types: {fill: {type: manual, state: not_started}}
+
+  - id: hemibrain
+    label: "Hemibrain"
+    provider: neuprint
+    version: "1.2.1"
+    vfb_site: neuprint_JRC_Hemibrain_1point2point1
+    neuprint_dataset: "hemibrain"
+    runner: src/VFB_connectomics_import/script_runner_neuPrint.py
+    owner:
+    stages:
+      neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
+      skel:    {fill: {type: jenkins, job: ""}}
+      n2n:
+        fill:   {type: owl_index, match: 'neuprint_JRC_Hemibrain.*connectomics\.owl'}
+        update: {type: neuprint_upstream}
+        live:   {type: pdb_cypher}
+      n2r:  {fill: {type: repo_glob, match: 'src/VFB_connectomics_import/tsv/*hb*n2r*'}, live: {type: pdb_cypher}}
+      types: {fill: {type: manual, state: not_started}}
+
+  - id: opticlobe
+    label: "Optic Lobe"
+    provider: neuprint
+    version: "1.0.1"
+    vfb_site: neuprint_JRC_OpticLobe_v1_0_1
+    neuprint_dataset: "optic-lobe"
+    runner: src/VFB_connectomics_import/OL_import.py
+    owner: adm
+    stages:
+      neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
+      skel:    {fill: {type: jenkins, job: ""}}
+      n2n:
+        fill:   {type: owl_index, match: 'connectome_jrc_ol\.owl'}
+        update: {type: neuprint_upstream}
+        live:   {type: pdb_cypher}
+      n2r:  {fill: {type: owl_index, match: 'connectome_jrc_ol.*n2r\.owl'}, live: {type: pdb_cypher}}
+      types: {fill: {type: manual, state: not_started}}
+
+  - id: flywire
+    label: "FlyWire (FAFB)"
+    provider: cave
+    version: "783"
+    vfb_dataset: Dorkenwald2023
+    vfb_site: flywire783
+    runner: src/VFB_connectomics_import/flywire_import.py
+    owner: adm
+    stages:
+      neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
+      skel:    {fill: {type: jenkins, job: ""}}
+      n2n:  {fill: {type: owl_index, match: 'connectome_flywire_fafb\.owl'}, live: {type: pdb_cypher}}
+      n2r:  {fill: {type: owl_index, match: 'connectome_flywire.*n2r\.owl'}, live: {type: pdb_cypher}}
+      types: {fill: {type: manual, state: not_started}}
+
+  - id: banc
+    label: "BANC"
+    provider: gcs
+    version: "626"
+    vfb_dataset: Bates2025
+    vfb_site: BANC626
+    runner: src/VFB_connectomics_import/script_runner_BANC.py
+    owner: adm
+    stages:
+      neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
+      skel:    {fill: {type: jenkins, job: ""}}
+      n2n:  {fill: {type: owl_index, match: 'connectome_BANC_n2n\.owl'}, live: {type: pdb_cypher}}
+      n2r:  {fill: {type: manual, state: not_started}}
+      types: {fill: {type: manual, state: not_started}}
+
+  - id: fafb
+    label: "FAFB (CATMAID)"
+    provider: catmaid
+    vfb_site: catmaid_fafb
+    runner: src/VFB_connectomics_import/script_runner_CATMAID.py
+    owner: adm
+    issue: 8
+    stages:
+      neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
+      skel:    {fill: {type: manual, state: not_started}}
+      n2n:  {fill: {type: owl_index, match: 'FAFB_CATMAID_import\.owl'}, live: {type: pdb_cypher}}
+      n2r:  {fill: {type: manual, state: not_started}}
+      types: {fill: {type: manual, state: not_started}}
+
+  - id: l1em
+    label: "L1EM (CATMAID)"
+    provider: catmaid
+    vfb_site: catmaid_l1em
+    runner: src/VFB_connectomics_import/script_runner_CATMAID.py
+    owner: adm
+    issue: 15
+    stages:
+      neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
+      skel:    {fill: {type: manual, state: not_started}}
+      n2n:  {fill: {type: owl_index, match: 'L1EM_CATMAID_import\.owl'}, live: {type: pdb_cypher}}
+      n2r:  {fill: {type: manual, state: not_started}}
+      types: {fill: {type: manual, state: not_started}}

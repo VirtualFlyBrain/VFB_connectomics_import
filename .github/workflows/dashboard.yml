@@ -1,0 +1,69 @@
+name: Connectome dashboard
+
+# Regenerates the connectome import dashboard automatically:
+#  - on push to main that touches the manifest, probes, or import code
+#  - nightly, so upstream/PDB changes surface without anyone touching the repo
+#  - on demand via the "Run workflow" button
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dashboard/connectomes.yaml'
+      - 'dashboard/probes.py'
+      - 'dashboard/generate.py'
+      - 'src/**'
+      - '.github/workflows/dashboard.yml'
+  schedule:
+    - cron: '0 6 * * *'      # 06:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: write            # to commit the regenerated STATUS.md
+  pages: write               # to publish the HTML dashboard
+  id-token: write
+
+concurrency:
+  group: connectome-dashboard
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install deps
+        run: pip install pyyaml certifi
+
+      - name: Generate dashboard
+        env:
+          # Optional: enables the "needs update" upstream check for neuPrint.
+          # Add a repo secret named NEUPRINT_TOKEN to turn it on.
+          NEUPRINT_TOKEN: ${{ secrets.NEUPRINT_TOKEN }}
+        run: python dashboard/generate.py
+
+      - name: Commit STATUS.md if changed
+        run: |
+          git config user.name  "vfb-dashboard-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard/STATUS.md
+          if git diff --staged --quiet; then
+            echo "No dashboard changes to commit."
+          else
+            git commit -m "Update connectome dashboard [skip ci]"
+            git push
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dashboard/site
+      - id: deploy
+        uses: actions/deploy-pages@v4

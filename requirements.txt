@@ -6,3 +6,4 @@ python-catmaid
 jsonpath-rw
 pyyaml
 fafbseg
+certifi
