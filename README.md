@@ -1,6 +1,27 @@
 # VFB_connectomics_import
 A project to produce RDF/OWL representations of connectomics data for import to the VFB integration layer triple store.
 
+## 📊 Import status dashboard
+
+**[Open the live dashboard →](https://virtualflybrain.github.io/VFB_connectomics_import/)**  ·  how it works: [`dashboard/`](dashboard/)
+
+<!-- CONNECTOME-DASHBOARD:START -->
+_Auto-generated 2026-07-27 20:32 UTC — see the [live dashboard](https://virtualflybrain.github.io/VFB_connectomics_import/) or [dashboard/STATUS.md](dashboard/STATUS.md)._
+
+Legend: 🟩 done · 🟧 needs update · 🟥 in progress / not live · ⬜ not started · 🔳 unknown  ·  🔵 live in release · ⚪ done but not live yet
+
+| Connectome | Ver | Neurons loaded | Skeletons / Meshes | Connectivity n→n | Connectivity n→r | Neuron types in ontology | Owner |
+|---|---|---|---|---|---|---|---|
+| male-CNS | 1.0 | ⬜ | 🔳 | 🟩⚪ | ⬜ | ⬜ | @adm |
+| MANC | 1.2.1 | 🟩🔵 | 🔳 | 🟩🔵 | ⬜ | ⬜ | — |
+| Hemibrain | 1.2.1 | 🟩🔵 | 🔳 | 🟩🔵 | 🟩🔵 | ⬜ | — |
+| Optic Lobe | 1.0.1 | 🟩🔵 | 🔳 | 🟩🔵 | ⬜ | ⬜ | @adm |
+| FlyWire (FAFB) | 783 | 🟩🔵 | 🔳 | 🟩🔵 | ⬜ | ⬜ | @adm |
+| BANC | 626 | 🟩🔵 | 🔳 | 🟩🔵 | ⬜ | ⬜ | @adm |
+| FAFB (CATMAID) | — | 🟩🔵 | ⬜ | 🟩🔵 | ⬜ | ⬜ | @adm |
+| L1EM (CATMAID) | — | 🟩🔵 | ⬜ | 🟩🔵 | ⬜ | ⬜ | @adm |
+<!-- CONNECTOME-DASHBOARD:END -->
+
 ## Functional specification
 
 The VFB KB has records for neurons imported from sources that have connectomic data: currently neuprint + multiple CATMAID databases.  These records include the IDs for these neurons used in the sources they are imported from (e.g. bodyIDs from neuprint)  The aim of library is to provide simple, extensible code for importing connectomics assertions about these neurons into the VFB integration layer triple store, via the generation of RDF/OWL. 

@@ -171,13 +171,14 @@ Show only rows needing attention</label></div>
 # --------------------------------------------------------------------------- #
 # Markdown
 # --------------------------------------------------------------------------- #
-def render_markdown(manifest, rows, stage_ids, when):
+LEGEND_MD = ("Legend: 🟩 done · 🟧 needs update · 🟥 in progress / not live · "
+             "⬜ not started · 🔳 unknown  ·  🔵 live in release · ⚪ done but not live yet")
+
+
+def _matrix_lines(manifest, rows, stage_ids):
+    """The legend + matrix table as markdown lines (shared by STATUS.md and README)."""
     labels = {s["id"]: s["label"] for s in manifest["stages"]}
-    out = ["# Connectome Import Status", "",
-           "_Auto-generated %s. Do not edit by hand — edit `connectomes.yaml`._" % when,
-           "",
-           "Legend: 🟩 done · 🟧 needs update · 🟥 in progress / not live · ⬜ not started · 🔳 unknown  ·  🔵 live in release · ⚪ done but not live yet",
-           ""]
+    out = [LEGEND_MD, ""]
     header = ["Connectome", "Ver"] + [labels[s] for s in stage_ids] + ["Owner"]
     out.append("| " + " | ".join(header) + " |")
     out.append("|" + "|".join(["---"] * len(header)) + "|")
@@ -194,8 +195,52 @@ def render_markdown(manifest, rows, stage_ids, when):
             line.append(emoji)
         line.append("@" + c["owner"] if c.get("owner") else "—")
         out.append("| " + " | ".join(line) + " |")
+    return out
+
+
+def render_markdown(manifest, rows, stage_ids, when):
+    out = ["# Connectome Import Status", "",
+           "_Auto-generated %s. Do not edit by hand — edit `connectomes.yaml`._" % when,
+           ""]
+    out += _matrix_lines(manifest, rows, stage_ids)
     out.append("")
     return "\n".join(out)
+
+
+README_START = "<!-- CONNECTOME-DASHBOARD:START -->"
+README_END = "<!-- CONNECTOME-DASHBOARD:END -->"
+
+
+def pages_url(manifest):
+    repo = manifest.get("meta", {}).get("github_repo", "")
+    if "/" in repo:
+        owner, name = repo.split("/", 1)
+        return "https://%s.github.io/%s/" % (owner.lower(), name)
+    return ""
+
+
+def update_readme(repo_root, manifest, rows, stage_ids, when):
+    """Inject the matrix into the root README between marker comments.
+    Leaves the README untouched if the markers are absent."""
+    import re
+    path = os.path.join(repo_root, "README.md")
+    try:
+        with open(path) as f:
+            text = f.read()
+    except OSError:
+        return False
+    if README_START not in text or README_END not in text:
+        return False
+    url = pages_url(manifest)
+    link = ("_Auto-generated %s — see the [live dashboard](%s) or "
+            "[dashboard/STATUS.md](dashboard/STATUS.md)._" % (when, url)) if url else \
+           "_Auto-generated %s — see [dashboard/STATUS.md](dashboard/STATUS.md)._" % when
+    block = [README_START, link, ""] + _matrix_lines(manifest, rows, stage_ids) + [README_END]
+    new = re.sub(re.escape(README_START) + ".*?" + re.escape(README_END),
+                 "\n".join(block), text, flags=re.DOTALL)
+    with open(path, "w") as f:
+        f.write(new)
+    return True
 
 
 def main():
@@ -210,6 +255,7 @@ def main():
         f.write(render_html(manifest, rows, stage_ids, when))
     with open(os.path.join(HERE, "STATUS.md"), "w") as f:
         f.write(render_markdown(manifest, rows, stage_ids, when))
+    injected = update_readme(ctx["repo_root"], manifest, rows, stage_ids, when)
 
     # console summary
     for r in rows:
@@ -218,7 +264,10 @@ def main():
         print("%-16s %s" % (
             r["c"].get("label", r["c"]["id"]),
             ("needs attention: " + ", ".join(flags)) if flags else "ok"))
-    print("\nWrote dashboard/site/index.html and dashboard/STATUS.md")
+    targets = "dashboard/site/index.html and dashboard/STATUS.md"
+    if injected:
+        targets += " and injected matrix into README.md"
+    print("\nWrote " + targets)
 
 
 if __name__ == "__main__":

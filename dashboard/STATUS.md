@@ -1,6 +1,10 @@
 # Connectome Import Status
 
+<<<<<<< Updated upstream
 _Auto-generated 2026-07-27 20:19 UTC. Do not edit by hand — edit `connectomes.yaml`._
+=======
+_Auto-generated 2026-07-27 20:32 UTC. Do not edit by hand — edit `connectomes.yaml`._
+>>>>>>> Stashed changes
 
 Legend: 🟩 done · 🟧 needs update · 🟥 in progress / not live · ⬜ not started · 🔳 unknown  ·  🔵 live in release · ⚪ done but not live yet
 
