@@ -18,8 +18,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write            # to commit the regenerated STATUS.md
-  pages: write               # to publish the HTML dashboard
+  contents: read             # generated files are never committed — Pages only
+  pages: write               # to publish the dashboard
   id-token: write
 
 concurrency:
@@ -48,18 +48,6 @@ jobs:
           # Add a repo secret named NEUPRINT_TOKEN to turn it on.
           NEUPRINT_TOKEN: ${{ secrets.NEUPRINT_TOKEN }}
         run: python dashboard/generate.py
-
-      - name: Commit regenerated dashboard if changed
-        run: |
-          git config user.name  "vfb-dashboard-bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add dashboard/STATUS.md README.md
-          if git diff --staged --quiet; then
-            echo "No dashboard changes to commit."
-          else
-            git commit -m "Update connectome dashboard [skip ci]"
-            git push
-          fi
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

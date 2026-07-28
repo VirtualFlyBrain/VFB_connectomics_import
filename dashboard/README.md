@@ -4,9 +4,13 @@ A self-updating status board for every connectome VFB imports. It answers, at a
 glance: **what stage is each import at, which version, is it live in the current
 release, and does it need updating** — without anyone maintaining a board by hand.
 
-- **[STATUS.md](STATUS.md)** — emoji matrix, renders in GitHub (committed by CI).
-- **HTML dashboard** — colour-coded, published to GitHub Pages by the
-  [`Connectome dashboard`](../.github/workflows/dashboard.yml) workflow.
+**[Open the live dashboard →](https://virtualflybrain.github.io/VFB_connectomics_import/)**
+(colour-coded HTML; an emoji `STATUS.md` is published alongside it).
+
+Generated output is **never committed** — it is built into `site/` and published to
+GitHub Pages by the [`Connectome dashboard`](../.github/workflows/dashboard.yml)
+workflow (nightly + on push + manual). Nothing regenerating lives in git, so it can
+never cause a merge conflict.
 
 ## How it reads
 
@@ -68,7 +72,7 @@ generation.
 ```bash
 pip install pyyaml certifi
 python dashboard/generate.py
-# writes dashboard/site/index.html and dashboard/STATUS.md
+# writes dashboard/site/index.html and dashboard/site/STATUS.md (gitignored)
 open dashboard/site/index.html
 ```
 
@@ -89,6 +93,29 @@ curl -s -X POST https://pdb.virtualflybrain.org/db/data/transaction/commit \
   -H 'Content-Type: application/json' \
   -d '{"statements":[{"statement":"MATCH (s:Site) RETURN s.short_form ORDER BY s.short_form"}]}'
 ```
+
+## How VFB dataset updates work (reference)
+
+Canonical docs: **<https://virtualflybrain.org/docs/data/em/versioning/>** — read this
+before extending the version/live logic. The mechanics that matter for the dashboard:
+
+- **Each release is a new `Site` + `DataSet`.** A version bump creates new nodes; it
+  does not overwrite the old ones in place. So a version's identity lives in its
+  `Site` short_form (e.g. `male_cns_v0_9` → `male_cns_v1_0`).
+- **The *current* version is flagged**, not just present. The `Connectome` label and
+  the `is_data_source` flag move from the old Site to the new one, marking it the
+  authoritative source. → The most reliable "what version is live now" signal is the
+  Site carrying `is_data_source` / the `Connectome` label, **not** merely any Site
+  whose short_form exists. (v2 should query for that flag rather than guess short_forms.)
+- **Old → new is linked** by a `term_replaced_by` edge — that's the upgrade chain.
+- **Connectivity and images are replaced** with edges from the new data for neurons
+  that are not deprecated. Deprecated neurons keep resolvable IDs but are excluded
+  from connectivity results.
+
+Implication: the earlier "in-place update under the same short_form" worry is largely
+moot for VFB-loaded data (new Site per release) — but the *source-side* version
+(neuPrint dataset key, CAVE materialization, BANC bucket) is still what tells us a new
+release exists upstream before VFB has loaded it.
 
 ## Security note
 

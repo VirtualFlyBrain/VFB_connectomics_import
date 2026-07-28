@@ -38,11 +38,15 @@ meta:
 # Matrix columns, left to right. Add a stage anytime — the generator just
 # iterates this list, so a new column is one line here + a probe per connectome.
 stages:
+  - {id: dataset, label: "Dataset record"}      # Site + DataSet KB nodes exist (earliest step)
   - {id: neurons, label: "Neurons loaded"}
   - {id: skel,    label: "Skeletons / Meshes"}
+  - {id: rois,    label: "ROIs loaded"}
+  - {id: domains, label: "Painted domains"}      # 3D neuropil region meshes / L-R domain individuals (issue #10)
   - {id: n2n,     label: "Connectivity n→n"}
   - {id: n2r,     label: "Connectivity n→r"}
-  - {id: types,   label: "Neuron types in ontology"}
+  - {id: types,   label: "FBbt annotations done"}
+  - {id: retired, label: "Old version retired"}  # update done: term_replaced_by added, dropped neurons deprecated
 
 # vfb_site values below were checked against the live PDB Site list. Where the
 # TARGET version is not yet a live Site, the live dot will correctly stay OFF.

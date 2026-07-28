@@ -15,3 +15,4 @@ dashboard/__pycache__/
 *.owl
 *_n_2_n.tsv
 * copy.*
+dashboard/STATUS.md

@@ -3,8 +3,9 @@ A project to produce RDF/OWL representations of connectomics data for import to 
 
 ## 📊 Import status dashboard
 
-**[Open the live dashboard →](https://virtualflybrain.github.io/VFB_connectomics_import/)**  ·  how it works: [`dashboard/`](dashboard/)
+**[Open the live dashboard →](https://virtualflybrain.github.io/VFB_connectomics_import/)**
 
+<<<<<<< Updated upstream
 <!-- CONNECTOME-DASHBOARD:START -->
 _Auto-generated 2026-07-28 08:41 UTC — see the [live dashboard](https://virtualflybrain.github.io/VFB_connectomics_import/) or [dashboard/STATUS.md](dashboard/STATUS.md)._
 
@@ -21,6 +22,11 @@ Legend: 🟩 done · 🟧 needs update · 🟥 in progress / not live · ⬜ not
 | FAFB (CATMAID) | — | 🟩🔵 | ⬜ | 🟩🔵 | ⬜ | ⬜ | @adm |
 | L1EM (CATMAID) | — | 🟩🔵 | ⬜ | 🟩🔵 | ⬜ | ⬜ | @adm |
 <!-- CONNECTOME-DASHBOARD:END -->
+=======
+A colour-coded, always-current matrix of every connectome import — stage, version,
+and whether it's live in the release. Rebuilt automatically (nightly + on push).
+How it works and how to extend it: [`dashboard/`](dashboard/).
+>>>>>>> Stashed changes
 
 ## Functional specification
 

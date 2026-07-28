@@ -207,10 +207,6 @@ def render_markdown(manifest, rows, stage_ids, when):
     return "\n".join(out)
 
 
-README_START = "<!-- CONNECTOME-DASHBOARD:START -->"
-README_END = "<!-- CONNECTOME-DASHBOARD:END -->"
-
-
 def pages_url(manifest):
     repo = manifest.get("meta", {}).get("github_repo", "")
     if "/" in repo:
@@ -219,43 +215,20 @@ def pages_url(manifest):
     return ""
 
 
-def update_readme(repo_root, manifest, rows, stage_ids, when):
-    """Inject the matrix into the root README between marker comments.
-    Leaves the README untouched if the markers are absent."""
-    import re
-    path = os.path.join(repo_root, "README.md")
-    try:
-        with open(path) as f:
-            text = f.read()
-    except OSError:
-        return False
-    if README_START not in text or README_END not in text:
-        return False
-    url = pages_url(manifest)
-    link = ("_Auto-generated %s — see the [live dashboard](%s) or "
-            "[dashboard/STATUS.md](dashboard/STATUS.md)._" % (when, url)) if url else \
-           "_Auto-generated %s — see [dashboard/STATUS.md](dashboard/STATUS.md)._" % when
-    block = [README_START, link, ""] + _matrix_lines(manifest, rows, stage_ids) + [README_END]
-    new = re.sub(re.escape(README_START) + ".*?" + re.escape(README_END),
-                 "\n".join(block), text, flags=re.DOTALL)
-    with open(path, "w") as f:
-        f.write(new)
-    return True
-
-
 def main():
     manifest = load_manifest()
     ctx = build_context(manifest.get("meta", {}))
     rows, stage_ids = evaluate(manifest, ctx)
     when = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
+    # Generated output goes ONLY into site/ (published to GitHub Pages, never
+    # committed to git) — so regenerating can never cause a merge conflict.
     site_dir = os.path.join(HERE, "site")
     os.makedirs(site_dir, exist_ok=True)
     with open(os.path.join(site_dir, "index.html"), "w") as f:
         f.write(render_html(manifest, rows, stage_ids, when))
-    with open(os.path.join(HERE, "STATUS.md"), "w") as f:
+    with open(os.path.join(site_dir, "STATUS.md"), "w") as f:
         f.write(render_markdown(manifest, rows, stage_ids, when))
-    injected = update_readme(ctx["repo_root"], manifest, rows, stage_ids, when)
 
     # console summary
     for r in rows:
@@ -264,10 +237,10 @@ def main():
         print("%-16s %s" % (
             r["c"].get("label", r["c"]["id"]),
             ("needs attention: " + ", ".join(flags)) if flags else "ok"))
-    targets = "dashboard/site/index.html and dashboard/STATUS.md"
-    if injected:
-        targets += " and injected matrix into README.md"
-    print("\nWrote " + targets)
+    print("\nWrote dashboard/site/index.html and dashboard/site/STATUS.md")
+    url = pages_url(manifest)
+    if url:
+        print("Live dashboard: " + url)
 
 
 if __name__ == "__main__":

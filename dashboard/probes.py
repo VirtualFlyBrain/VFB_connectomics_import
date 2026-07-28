@@ -141,7 +141,17 @@ def probe_jenkins(cfg, ctx, connectome=None, stage_id=None):
 # --------------------------------------------------------------------------- #
 # neuprint_upstream — is a newer version available upstream? (update probe)
 # --------------------------------------------------------------------------- #
+def _parse_version(s):
+    """'v1.2.3' or '1.2' -> (1, 2, 3); non-numeric -> ()."""
+    nums = re.findall(r"\d+", str(s).lstrip("vV"))
+    return tuple(int(n) for n in nums)
+
+
 def probe_neuprint_upstream(cfg, ctx, connectome):
+    """Compare the connectome's local version to the newest version neuPrint
+    offers. neuPrint's /api/dbmeta/datasets (== Client.fetch_datasets) keys each
+    dataset as 'name:vX.Y.Z', so the latest version is the max key suffix.
+    Requires NEUPRINT_TOKEN (the endpoint is authenticated)."""
     token = os.environ.get("NEUPRINT_TOKEN")
     ds = connectome.get("neuprint_dataset")
     if not token or not ds:
@@ -153,19 +163,21 @@ def probe_neuprint_upstream(cfg, ctx, connectome):
         ))
     except Exception as e:                # noqa: BLE001
         return None, "neuprint unreachable: %s" % e
-    # datasets keyed like "male-cns:v1.0"; find newest version for this dataset
-    versions = []
+    candidates = []
     for key, val in (data or {}).items():
-        name = key.split(":")[0]
-        if name == ds:
-            versions.append(str(val.get("lastDatabaseEdit") or key.split(":")[-1]))
-    if not versions:
+        name, _, ver = key.partition(":")
+        if name == ds and ver:
+            candidates.append((_parse_version(ver), ver, (val or {}).get("last-mod")))
+    if not candidates:
         return None, "dataset '%s' not found upstream" % ds
-    latest = sorted(versions)[-1]
-    local = str(connectome.get("version") or "")
-    if local and local not in latest and latest not in local:
-        return True, "upstream latest: %s (local %s)" % (latest, local)
-    return False, "up to date with upstream (%s)" % latest
+    candidates.sort()
+    _, latest, last_mod = candidates[-1]
+    local = connectome.get("version")
+    if not local:
+        return None, "upstream latest %s (no local version to compare)" % latest
+    if _parse_version(local) < _parse_version(latest):
+        return True, "upstream %s available (local %s, mod %s)" % (latest, local, last_mod)
+    return False, "up to date (upstream latest %s)" % latest
 
 
 # --------------------------------------------------------------------------- #
