@@ -5,28 +5,9 @@ A project to produce RDF/OWL representations of connectomics data for import to 
 
 **[Open the live dashboard →](https://virtualflybrain.github.io/VFB_connectomics_import/)**
 
-<<<<<<< Updated upstream
-<!-- CONNECTOME-DASHBOARD:START -->
-_Auto-generated 2026-07-28 08:41 UTC — see the [live dashboard](https://virtualflybrain.github.io/VFB_connectomics_import/) or [dashboard/STATUS.md](dashboard/STATUS.md)._
-
-Legend: 🟩 done · 🟧 needs update · 🟥 in progress / not live · ⬜ not started · 🔳 unknown  ·  🔵 live in release · ⚪ done but not live yet
-
-| Connectome | Ver | Neurons loaded | Skeletons / Meshes | Connectivity n→n | Connectivity n→r | Neuron types in ontology | Owner |
-|---|---|---|---|---|---|---|---|
-| male-CNS | 1.0 | ⬜ | 🔳 | 🟩⚪ | ⬜ | ⬜ | @adm |
-| MANC | 1.2.1 | 🟩🔵 | 🔳 | 🟩🔵 | ⬜ | ⬜ | — |
-| Hemibrain | 1.2.1 | 🟩🔵 | 🔳 | 🟩🔵 | 🟩🔵 | ⬜ | — |
-| Optic Lobe | 1.0.1 | 🟩🔵 | 🔳 | 🟩🔵 | ⬜ | ⬜ | @adm |
-| FlyWire (FAFB) | 783 | 🟩🔵 | 🔳 | 🟩🔵 | ⬜ | ⬜ | @adm |
-| BANC | 626 | 🟩🔵 | 🔳 | 🟩🔵 | ⬜ | ⬜ | @adm |
-| FAFB (CATMAID) | — | 🟩🔵 | ⬜ | 🟩🔵 | ⬜ | ⬜ | @adm |
-| L1EM (CATMAID) | — | 🟩🔵 | ⬜ | 🟩🔵 | ⬜ | ⬜ | @adm |
-<!-- CONNECTOME-DASHBOARD:END -->
-=======
 A colour-coded, always-current matrix of every connectome import — stage, version,
 and whether it's live in the release. Rebuilt automatically (nightly + on push).
 How it works and how to extend it: [`dashboard/`](dashboard/).
->>>>>>> Stashed changes
 
 ## Functional specification
 
