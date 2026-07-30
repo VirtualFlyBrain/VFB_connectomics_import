@@ -21,6 +21,7 @@ import json
 import os
 import re
 import ssl
+import urllib.parse
 import urllib.request
 import urllib.error
 
@@ -183,6 +184,40 @@ def probe_neuprint_upstream(cfg, ctx, connectome):
 # --------------------------------------------------------------------------- #
 # pdb_cypher — is it actually LIVE in the current release? (live probe)
 # --------------------------------------------------------------------------- #
+def probe_gcs_versions(cfg, ctx, connectome):
+    """Update probe: list version folders in a public GCS bucket prefix and
+    compare the newest to the connectome's local version. Tokenless — uses the
+    public JSON storage API. e.g. BANC: bucket=lee-lab_...-connectome,
+    prefix=neuron_connectivity/, pattern='v(\\d+)' -> v626, v888."""
+    bucket = cfg.get("bucket")
+    prefix = cfg.get("prefix", "")
+    if not bucket:
+        return None, "gcs check skipped (no bucket)"
+    url = ("https://storage.googleapis.com/storage/v1/b/%s/o?prefix=%s&delimiter=/"
+           % (urllib.parse.quote(bucket), urllib.parse.quote(prefix)))
+    try:
+        data = json.loads(_get(url))
+    except Exception as e:                # noqa: BLE001
+        return None, "gcs unreachable: %s" % e
+    pat = re.compile(cfg.get("pattern", r"v(\d+)"))
+    versions = []
+    for p in data.get("prefixes", []):
+        m = pat.search(p)
+        if m:
+            token = m.group(1) if m.groups() else m.group(0)
+            versions.append((_parse_version(token), token))
+    if not versions:
+        return None, "no versioned folders under gs://%s/%s" % (bucket, prefix)
+    versions.sort()
+    latest = versions[-1][1]
+    local = connectome.get("version")
+    if not local:
+        return None, "gcs latest v%s (no local version to compare)" % latest
+    if _parse_version(local) < _parse_version(latest):
+        return True, "gcs v%s available (local v%s)" % (latest, local)
+    return False, "up to date (gcs latest v%s)" % latest
+
+
 def _default_live_query(stage_id, site):
     """Stage-aware default Cypher; returns None if no sensible default."""
     if not site:
@@ -266,11 +301,20 @@ def run_fill(cfg, ctx, connectome, stage_id):
         return "unknown", "probe error: %s" % e
 
 
+_UPDATE = {
+    "neuprint_upstream": probe_neuprint_upstream,
+    "gcs_versions": probe_gcs_versions,
+}
+
+
 def run_update(cfg, ctx, connectome):
-    if not cfg or cfg.get("type") != "neuprint_upstream":
+    if not cfg:
+        return None, ""
+    fn = _UPDATE.get(cfg.get("type"))
+    if not fn:
         return None, ""
     try:
-        return probe_neuprint_upstream(cfg, ctx, connectome)
+        return fn(cfg, ctx, connectome)
     except Exception as e:                # noqa: BLE001
         return None, "update probe error: %s" % e
 

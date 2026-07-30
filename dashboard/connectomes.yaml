@@ -151,7 +151,10 @@ connectomes:
     stages:
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
-      n2n:  {fill: {type: owl_index, match: 'connectome_BANC_n2n\.owl'}, live: {type: pdb_cypher}}
+      n2n:
+        fill:   {type: owl_index, match: 'connectome_BANC_n2n\.owl'}
+        update: {type: gcs_versions, bucket: lee-lab_brain-and-nerve-cord-fly-connectome, prefix: 'neuron_connectivity/', pattern: 'v(\d+)'}
+        live:   {type: pdb_cypher}
       n2r:  {fill: {type: manual, state: not_started}}
       types: {fill: {type: manual, state: not_started}}
 
