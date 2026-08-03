@@ -278,6 +278,82 @@ def probe_pdb_exists(cfg, ctx, connectome, stage_id):
 
 
 # --------------------------------------------------------------------------- #
+# pdb_dataset — does this version's Site / DataSet record exist yet?
+# --------------------------------------------------------------------------- #
+_SITE_Q = ("MATCH (s:Site {short_form:$sf}) "
+           "RETURN 'Connectome' IN labels(s) AS conn, s.is_data_source AS flag")
+_DS_Q = "MATCH (d:DataSet {short_form:$df}) RETURN count(d) AS c"
+
+
+def _truthy(v):
+    """PDB returns some booleans wrapped in a single-element list
+    (is_data_source comes back as [True], not True)."""
+    if isinstance(v, (list, tuple)):
+        return any(bool(x) for x in v)
+    return bool(v)
+
+
+def probe_pdb_dataset(cfg, ctx, connectome, stage_id=None):
+    """Fill probe for the 'Dataset record' stage — the earliest import step.
+
+    Per VFB versioning (https://virtualflybrain.org/docs/data/em/versioning/)
+    each release is a NEW Site, and the `Connectome` label + `is_data_source`
+    flag MOVE to it when it becomes authoritative. So there are three states
+    worth distinguishing, not two:
+
+      no Site at all                  -> not_started
+      Site exists, is_data_source set  -> done
+      Site exists, flag NOT set        -> in_progress (record built, not yet
+                                         the current source for this release)
+
+    The DataSet node is only checked when the manifest supplies `vfb_dataset`;
+    an absent field is reported, never treated as a failure.
+    """
+    site = connectome.get("vfb_site")
+    if not site:
+        return "unknown", "no vfb_site in manifest"
+    ds = connectome.get("vfb_dataset")
+    stmts = [{"statement": _SITE_Q, "parameters": {"sf": site}}]
+    if ds:
+        stmts.append({"statement": _DS_Q, "parameters": {"df": ds}})
+    try:
+        res = _post_json(ctx["pdb_tx_url"], {"statements": stmts})
+    except Exception as e:                # noqa: BLE001
+        return "unknown", "PDB unreachable: %s" % e
+    if res.get("errors"):
+        return "unknown", "PDB query error: %s" % res["errors"]
+
+    results = res.get("results") or []
+    rows = (results[0].get("data") if results else None) or []
+    if not rows:
+        return "not_started", "no Site '%s' in KB yet" % site
+    row = list(rows[0].get("row") or [])
+    if len(row) < 2:
+        # Response shape changed under us — say "unknown" rather than silently
+        # reporting every connectome as in_progress.
+        return "unknown", "unexpected PDB response shape for Site '%s'" % site
+    conn, flag = row[0], row[1]
+
+    if ds:
+        try:
+            ds_count = results[1]["data"][0]["row"][0]
+        except (IndexError, KeyError, TypeError):
+            ds_count = None
+        if ds_count == 0:
+            return "in_progress", ("Site '%s' present but DataSet '%s' missing"
+                                   % (site, ds))
+        ds_note = "DataSet %s present" % ds
+    else:
+        ds_note = "DataSet not checked (no vfb_dataset in manifest)"
+
+    if not _truthy(flag):
+        return "in_progress", ("Site '%s' exists but is_data_source is unset — not "
+                               "yet the current source; %s" % (site, ds_note))
+    extra = "" if _truthy(conn) else "; warning: no Connectome label"
+    return "done", "Site '%s' is current data source; %s%s" % (site, ds_note, extra)
+
+
+# --------------------------------------------------------------------------- #
 # dispatch
 # --------------------------------------------------------------------------- #
 _FILL = {
@@ -286,12 +362,15 @@ _FILL = {
     "jenkins": probe_jenkins,
     "manual": probe_manual,
     "pdb_cypher": probe_pdb_exists,
+    "pdb_dataset": probe_pdb_dataset,
 }
 
 
 def run_fill(cfg, ctx, connectome, stage_id):
     if not cfg:
-        return "not_started", "no probe configured"
+        # "unknown", NOT "not_started": an unwired cell means we never checked,
+        # which is not the same claim as "this work has not begun".
+        return "unknown", "no probe configured for this cell"
     fn = _FILL.get(cfg.get("type"))
     if not fn:
         return "unknown", "unknown probe type: %s" % cfg.get("type")

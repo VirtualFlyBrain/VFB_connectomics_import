@@ -51,11 +51,29 @@ n2n:
 | `repo_glob` | matching artifact present in this repo | e.g. a built TSV not yet uploaded |
 | `jenkins` | a Jenkins job's status | running → in progress, success → done. Needs `meta.jenkins_base` + a `job` name |
 | `neuprint_upstream` | is a newer version available upstream | *update* probe; needs `NEUPRINT_TOKEN` env |
+| `gcs_versions` | newer version folder in a public GCS bucket | *update* probe; tokenless (BANC) |
 | `pdb_cypher` | is it live in PDB right now | *live* probe (and a *fill* probe for neurons). Uses a stage-aware default query, or a `query:` you supply |
+| `pdb_dataset` | does this version's `Site` (+ `DataSet`) record exist, and is it flagged `is_data_source`? | *fill* probe for the **Dataset record** column |
 | `manual` | a fixed `state:` | last resort — **will drift**, avoid |
 
 Any probe that can't reach its endpoint degrades to 🔳 unknown; it never breaks
-generation.
+generation. A cell with **no probe wired** is also 🔳 unknown — never ⬜, because
+"we never checked" is a different claim from "this work has not begun".
+
+### The `dataset` column
+
+`pdb_dataset` distinguishes three states, which matters because VFB versioning
+moves the `Connectome` label and `is_data_source` flag onto each new release's Site:
+
+| Result | State |
+|---|---|
+| no `Site` with that `short_form` | ⬜ not started |
+| `Site` exists but `is_data_source` unset | 🟥 in progress — record built, not yet the current source |
+| `Site` exists and is flagged | 🟩 done |
+
+It reads `vfb_site`, plus `vfb_dataset` when present (absent → reported in the
+tooltip, never counted as a failure). Note PDB returns `is_data_source` as a
+single-element **list** (`[True]`), which the probe normalises.
 
 ## Common edits
 

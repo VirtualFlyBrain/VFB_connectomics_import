@@ -16,15 +16,18 @@
 #   repo_glob        - matching artifact present in this repo?
 #   jenkins          - Jenkins job status (running -> in_progress, ok -> done)
 #   neuprint_upstream- newer version upstream? (needs NEUPRINT_TOKEN env)
+#   gcs_versions     - newer version folder in a public GCS bucket? (BANC)
 #   pdb_cypher       - query PDB; nonzero result -> live in current release
+#   pdb_dataset      - this version's Site/DataSet record exists & is_data_source?
 #   manual           - fixed state written here (WILL drift — avoid)
 #
 # Fill colours:
 #   done         green   - built & uploaded to the VFB data server
 #   needs_update orange  - done, but a newer upstream version exists
 #   in_progress  red     - being worked / job running / not live yet
-#   not_started  grey    - nothing done yet
-#   unknown      hatched - a probe could not determine state
+#   not_started  grey    - nothing done yet (a probe RAN and found nothing)
+#   unknown      hatched - a probe could not determine state, OR no probe is
+#                          wired for that cell yet. Never claims work is undone.
 #
 # Live dot (from PDB):  ● live now   ○ done but NOT live in this release yet
 # =============================================================================
@@ -56,12 +59,13 @@ connectomes:
     label: "male-CNS"
     provider: neuprint
     version: "1.0"
-    vfb_dataset: Berg2025a
+    vfb_dataset: Berg2025        # verified against PDB — 'Berg2025a' does not exist
     vfb_site: male_cns_v1_0        # PDB currently has male_cns_v0_9 -> v1.0 not live yet
     neuprint_dataset: "male-cns"
     runner: src/VFB_connectomics_import/script_runner_neuPrint.py
     owner: adm
     stages:
+      dataset: {fill: {type: pdb_dataset}}
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
       n2n:
@@ -80,6 +84,7 @@ connectomes:
     runner: src/VFB_connectomics_import/MANC_import.py
     owner:
     stages:
+      dataset: {fill: {type: pdb_dataset}}
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
       n2n:
@@ -98,6 +103,7 @@ connectomes:
     runner: src/VFB_connectomics_import/script_runner_neuPrint.py
     owner:
     stages:
+      dataset: {fill: {type: pdb_dataset}}
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
       n2n:
@@ -116,6 +122,7 @@ connectomes:
     runner: src/VFB_connectomics_import/OL_import.py
     owner: adm
     stages:
+      dataset: {fill: {type: pdb_dataset}}
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
       n2n:
@@ -134,6 +141,7 @@ connectomes:
     runner: src/VFB_connectomics_import/flywire_import.py
     owner: adm
     stages:
+      dataset: {fill: {type: pdb_dataset}}
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
       n2n:  {fill: {type: owl_index, match: 'connectome_flywire_fafb\.owl'}, live: {type: pdb_cypher}}
@@ -149,6 +157,7 @@ connectomes:
     runner: src/VFB_connectomics_import/script_runner_BANC.py
     owner: adm
     stages:
+      dataset: {fill: {type: pdb_dataset}}
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
       n2n:
@@ -166,6 +175,7 @@ connectomes:
     owner: adm
     issue: 8
     stages:
+      dataset: {fill: {type: pdb_dataset}}
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: manual, state: not_started}}
       n2n:  {fill: {type: owl_index, match: 'FAFB_CATMAID_import\.owl'}, live: {type: pdb_cypher}}
@@ -180,6 +190,7 @@ connectomes:
     owner: adm
     issue: 15
     stages:
+      dataset: {fill: {type: pdb_dataset}}
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: manual, state: not_started}}
       n2n:  {fill: {type: owl_index, match: 'L1EM_CATMAID_import\.owl'}, live: {type: pdb_cypher}}
