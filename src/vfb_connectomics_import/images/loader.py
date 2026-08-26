@@ -6,18 +6,19 @@ contract — `volume.swc`, `volume_man.obj`, `volume.nrrd` written into the KB-s
 folder — but BANC-specific and version-controlled.
 
 The filesystem contract (what is written, swapped and deleted) lives in
-[`banc_image_io.py`](banc_image_io.py). It is separate because it is the part that can
+[`io.py`](io.py). It is separate because it is the part that can
 destroy a served image, and it needs no network or transform, so it can be read closely and
 tested outright. This module owns fetching, geometry, transforms and orchestration.
 
 Usage
 -----
-    export BANC_FIELD_DIR=/local/banc_transform_fields      # required, see TRANSFORMS.md
+    export BANC_FIELD_DIR=/local/banc_transform_fields      # required, see docs/TRANSFORMS.md
     export KB_USER=... KB_PASSWORD=...
-    python banc_image_loader.py --region brain --workers 8 --ledger run.jsonl
+    vfb-banc-images --region brain --workers 8 --ledger run.jsonl
+    # or, uninstalled: PYTHONPATH=src python -m vfb_connectomics_import.images.loader
 
     # Jenkins/SLURM array: split the work list N ways, one ledger per task
-    python banc_image_loader.py --region brain --shard $I --of $N --ledger shard-$I.jsonl
+    vfb-banc-images --region brain --shard $I --of $N --ledger shard-$I.jsonl
 
     # stage skeletons in bulk first (strongly recommended, see --skeleton-dir)
     gsutil -m rsync -r \
@@ -44,7 +45,7 @@ There are exactly two, both in `decide()`:
 * The rebuild finds **no material in this region** (or too little to depict) *and* a usable
   source was available. That is a positive finding, not a failure: the image sitting there
   is spurious and is removed. This is the only thing that cleans up the ~4,660
-  wrong-template BANC images of ISSUES.md IMG-3. `--no-delete-spurious` disables it.
+  wrong-template BANC images of docs/ISSUES.md IMG-3. `--no-delete-spurious` disables it.
 * Files left over from the previous alignment are swept *after* a successful swap — stale
   `thumbnail*`, and any product no longer in `--products`.
 
@@ -80,18 +81,18 @@ What it does per neuron
 2. Cut at the NEUROPIL boundary — brain y < 305,801 nm, vnc y > 549,946 nm. The 244 um of
    neck connective between them is dropped from both halves: registration support runs
    ~200 um past each neuropil with no anatomy to constrain it, so material there warps into
-   plausible coordinates that pass a bbox check (ISSUES.md IMG-3).
+   plausible coordinates that pass a bbox check (docs/ISSUES.md IMG-3).
 3. Transform with the pre-baked fields (`banc_baked`) — no elastix, no `via`/`avoid`.
 4. Trim to the target template bounding box.
 5. Decide: swap the new set in, delete a spurious old one, or keep what is there.
-6. Decimate for the OBJ only, to hemibrain's 37 faces/um2 (ISSUES.md IMG-1). The NRRD keeps
-   the full-resolution mesh: it voxelises onto a ~0.5 um grid, so it neither gains from the
+6. Decimate for the OBJ only, to hemibrain's 37 faces/um2 (docs/ISSUES.md IMG-1). The NRRD
+   keeps the full-resolution mesh: it voxelises onto a ~0.5 um grid, so it neither gains from the
    fine mesh nor suffers from the coarse one.
 
 BANC publishes only LOD 0, so there is no coarser mesh to fetch and the step-6 decimation
 is ours. Neuroglancer remains the long-term answer for serving.
 
-See TRANSFORMS.md (transform paths, staging, the `use_https` trap) and ISSUES.md
+See docs/TRANSFORMS.md (transform paths, staging, the `use_https` trap) and docs/ISSUES.md
 (IMG-1/IMG-3/IMG-4).
 """
 import argparse
@@ -191,7 +192,7 @@ REGIONS = {
 
 
 # ------------------------------------------------------------------- mesh size reduction
-# ISSUES.md IMG-1. The served OBJs are unusably large, and the reason is tessellation
+# docs/ISSUES.md IMG-1. The served OBJs are unusably large, and the reason is tessellation
 # density, not neuron size. Measured 2026-08-26 on APL, the same cell in both datasets:
 #
 #   hemibrain APL_R   62,244 um2    2.31 M faces    37 f/um2   263 nm mean edge   (fine)
@@ -237,6 +238,7 @@ class Settings:
     field_dir: Optional[str] = None
     skeleton_dir: Optional[str] = None
     archive_dir: Optional[str] = None
+    mmap: bool = True
 
 
 # ---------------------------------------------------------------------------- worker state
@@ -264,7 +266,8 @@ def worker_init(settings):
 
     flybrains.register_transforms()
     navis.set_pbars(hide=True)
-    banc_baked.register(field_dir=settings.field_dir, verbose=False)   # raises if absent
+    banc_baked.register(field_dir=settings.field_dir, mmap=settings.mmap,
+                        verbose=False)                     # raises if absent
 
     _W.navis = navis
     _W.settings = settings
@@ -316,7 +319,7 @@ def fetch_mesh(root):
     """BANC mesh as a trimesh, in BANC nanometres. None if absent.
 
     Mesh coverage is incomplete upstream — 94.4% of `_skeleton` roots and 68.8% of
-    `_l2`-only roots (ISSUES.md IMG-4) — because bancpipeline wraps each mesh in `try()`
+    `_l2`-only roots (docs/ISSUES.md IMG-4) — because bancpipeline wraps each mesh in `try()`
     and swallows failures. So a missing mesh is expected, not exceptional.
     """
     import trimesh
@@ -484,7 +487,7 @@ def decide(sources, halves, had_image, st):
     elif halves.nodes < st.min_nodes and halves.faces < st.min_faces:
         # A neuron that merely grazes this region leaves a few nodes at the cut plane — a
         # truncated tip, not a depictable arbor. Observed: a VNC half survived the bbox
-        # trim with 5 nodes / 36 faces. This is the materiality rule of ISSUES.md IMG-3.
+        # trim with 5 nodes / 36 faces. This is the materiality rule of docs/ISSUES.md IMG-3.
         reason = (f'{halves.nodes} nodes / {halves.faces} faces below threshold '
                   f'({st.min_nodes}/{st.min_faces})')
         status = 'too_small'
@@ -574,7 +577,7 @@ def write_obj(mesh, path, dp=OBJ_DP):
     v, f = np.asarray(mesh.vertices, float), np.asarray(mesh.faces, int) + 1
     with open(path, 'wb') as fh:
         fh.write(f'# {len(v)} vertices, {len(f)} faces, microns, {dp} dp\n'
-                 f'# banc_image_loader.py\n'.encode())
+                 f'# vfb_connectomics_import.images.loader\n'.encode())
         np.savetxt(fh, v, fmt=f'v %.{dp}f %.{dp}f %.{dp}f')
         np.savetxt(fh, f, fmt='f %d %d %d')
 
@@ -689,7 +692,7 @@ def process(task):
 def _done(rec, t0, archive_dir=None):
     rec['seconds'] = round(time.time() - t0, 2)
     if archive_dir:
-        # A sidecar per neuron so banc_compare_html.py needs nothing but the archive dir,
+        # A sidecar per neuron so vfb-banc-compare needs nothing but the archive dir,
         # and so "this product is missing" is recorded rather than inferred from absence.
         d = os.path.join(archive_dir, rec['region'], str(rec['root']))
         try:
@@ -889,7 +892,7 @@ def parse_args(argv=None):
     ap.add_argument('--no-delete-spurious', action='store_true',
                     help='do not remove an existing image when the rebuild finds no '
                          'material in this region. Default is to remove it — that is the '
-                         '~4,660 wrong-template images of ISSUES.md IMG-3. Use this for a '
+                         '~4,660 wrong-template images of docs/ISSUES.md IMG-3. Use this for a '
                          'first cautious pass.')
     ap.add_argument('--ledger', default=os.environ.get('BANC_LEDGER'),
                     help='append-only JSONL of finished neurons. REQUIRED for a meaningful '
@@ -898,7 +901,7 @@ def parse_args(argv=None):
     ap.add_argument('--workers', type=int, default=8,
                     help='processes; ~350 MB peak each from voxelisation (default 8)')
     ap.add_argument('--field-dir', default=None,
-                    help='baked fields; default $BANC_FIELD_DIR (see TRANSFORMS.md)')
+                    help='baked fields; default $BANC_FIELD_DIR (see docs/TRANSFORMS.md)')
     ap.add_argument('--skeleton-dir', default=os.environ.get('BANC_SWC_DIR'),
                     help='local mirror of banc_banc_space_swc/ — strongly recommended, it '
                          'removes ~0.5 s of per-neuron request latency')
@@ -937,6 +940,12 @@ def parse_args(argv=None):
     ap.add_argument('--mesh-budget-mb', type=float, default=MESH_BUDGET_MB,
                     help='leave a mesh undecimated if its estimated gzipped size is '
                          'already under this (default 4 MB)')
+    ap.add_argument('--no-mmap', action='store_true',
+                    help='read the baked fields into memory instead of memory-mapping '
+                         'them. Only needed if the mount does not support mmap (some NFS '
+                         'exports). Costs ~543 MB RESIDENT PER WORKER, so lower --workers '
+                         'to match. Memory-mapping is otherwise strictly better: the '
+                         'kernel page cache shares one copy across all workers.')
     ap.add_argument('--no-download', action='store_true',
                     help='do not fetch the tail-hop H5 bridging registrations if absent; '
                          'fail instead. Use when $FLYBRAINS_DATA is pre-staged read-only.')
@@ -944,7 +953,7 @@ def parse_args(argv=None):
                     help='for TEST batches: copy each neuron\'s pre-replacement image, '
                          'and the new one, into DIR/<region>/<root>/{old,new}/ plus a '
                          'meta.json. Never touches the live folder. Render a comparison '
-                         'with banc_compare_html.py. Do not use on a full run.')
+                         'with vfb-banc-compare. Do not use on a full run.')
     ap.add_argument('--quiet', action='store_true',
                     help='suppress the per-neuron console line (status, counts and a '
                          'clickable link to the image folder). Progress lines, errors and '
@@ -1014,12 +1023,26 @@ def preflight(args, regions):
     import flybrains
     import navis
     from vfb_connectomics_import.images import transforms as banc_baked
-    flybrains.register_transforms()
     navis.set_pbars(hide=True)
-    ensure_h5(regions, download=not args.no_download)
+
+    # 1. Cheapest check first. Locating our own fields is an instant stat; the H5 step
+    #    below may download 717 MB. Checking in the other order meant a misconfigured
+    #    agent paid for the download and *then* failed.
     d, how = banc_baked.resolve_field_dir(args.field_dir)
     print(f'baked fields: {d}  (chosen by {how})', flush=True)
-    banc_baked.register(field_dir=args.field_dir, verbose=True)
+    absent = banc_baked.missing_fields(args.field_dir)
+    if absent:
+        raise banc_baked._missing_error(args.field_dir)
+
+    # 2. Now the possibly-expensive one. flybrains only registers an H5 edge for a file
+    #    that exists, so register_transforms() has to run AFTER any download or the
+    #    path assertion in step 3 would find no route at all.
+    ensure_h5(regions, download=not args.no_download)
+    flybrains.register_transforms()
+
+    # 3. Full check: fields load, reject out-of-domain, and elastix is out of the path.
+    banc_baked.register(field_dir=args.field_dir, mmap=not args.no_mmap,
+                        verbose=True)
     banc_baked.self_check(field_dir=args.field_dir, verbose=True)
 
     if args.skeleton_dir and os.path.isdir(args.skeleton_dir):
@@ -1122,7 +1145,7 @@ def main(argv=None):
         min_nodes=args.min_nodes, min_faces=args.min_faces,
         mesh_density=args.mesh_density, mesh_budget_mb=args.mesh_budget_mb,
         field_dir=args.field_dir, skeleton_dir=args.skeleton_dir,
-        archive_dir=args.archive)
+        archive_dir=args.archive, mmap=not args.no_mmap)
 
     t0, recs, counts = time.time(), [], {}
     pool = None

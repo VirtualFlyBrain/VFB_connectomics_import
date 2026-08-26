@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-"""Render old-vs-new 3D comparisons from a `banc_image_loader.py --archive` directory.
+"""Render old-vs-new 3D comparisons from a `vfb-banc-images --archive` directory.
 
-    python banc_image_loader.py --region brain --limit 20 --archive $WORKSPACE/archive ...
-    python banc_compare_html.py --archive $WORKSPACE/archive --out $WORKSPACE/compare
+    vfb-banc-images --region brain --limit 20 --archive $WORKSPACE/archive ...
+    vfb-banc-compare --archive $WORKSPACE/archive --out $WORKSPACE/compare
 
 Writes one interactive plotly HTML per neuron plus an `index.html` table, into the Jenkins
 workspace — never into a live image folder. Each page shows, in the same template space:
@@ -205,7 +205,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--archive', required=True,
-                    help='directory written by banc_image_loader.py --archive')
+                    help='directory written by vfb-banc-images --archive')
     ap.add_argument('--out', default=None,
                     help='output directory (default: <archive>/html)')
     ap.add_argument('--display-faces', type=int, default=DISPLAY_FACES,

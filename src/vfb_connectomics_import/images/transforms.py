@@ -21,15 +21,15 @@ these compose normally and are reusable for any downstream target.
 Usage
 -----
     from vfb_connectomics_import.images import transforms as banc_baked
-    banc_baked.register()                      # once per process
+    transforms.register()                      # once per process
     navis.xform_brain(pts, source='BANC', target='JRC2018U')
 
 Field location, in order of precedence:
-    banc_baked.register(field_dir='...')
+    transforms.register(field_dir='...')
     $BANC_FIELD_DIR
     ~/Documents/banc_transform_fields
 
-Building the fields: see `bake_banc_fields.py`. They are ~543 MB and must NOT be committed;
+Building the fields: see `bake_fields.py`. They are ~543 MB and must NOT be committed;
 publish them alongside VFB's other transforms (flybrains already consumes those via
 `flybrains.download_vfb_transforms`).
 """
@@ -65,7 +65,7 @@ class MissingFieldsError(RuntimeError):
 
     Raised rather than warned because the fallback is silent and expensive: navis simply
     routes through the elastix edges instead, which either dies with an error that
-    `except Exception` cannot catch (ISSUES.md CODE-2) or, if transformix happens to be
+    `except Exception` cannot catch (docs/ISSUES.md CODE-2) or, if transformix happens to be
     on the agent, quietly runs ~30x slower and produces correct-looking output.
     """
 
@@ -105,8 +105,8 @@ def _missing_error(field_dir=None):
         f'  missing   : ' + ', '.join(f'{t} -> {p}' for t, p in absent.items()) + '\n'
         f'  fix       : set $BANC_FIELD_DIR to the directory holding '
         f'{", ".join(c["stem"] + ".npy" for c in FIELDS.values())}, or build them with '
-        f'bake_banc_fields.py. Falling back to elastix is NOT safe here — see '
-        f'TRANSFORMS.md and ISSUES.md CODE-2.')
+        f'images/bake_fields.py. Falling back to elastix is NOT safe here — see '
+        f'docs/TRANSFORMS.md and docs/ISSUES.md CODE-2.')
 
 
 class BakedField:
@@ -182,7 +182,7 @@ def assert_baked_path(verbose=True):
 
     This is the end-to-end check: fields on disk are necessary but not sufficient, because
     `register()` could have been skipped, the weight could have been outgunned, or a caller
-    could have passed `via=`/`avoid=` (which bypass weighting entirely — TRANSFORMS.md).
+    could have passed `via=`/`avoid=` (which bypass weighting entirely — docs/TRANSFORMS.md).
     An `ElastixTransform` surviving in the path means the bake is not being used.
     """
     problems = []

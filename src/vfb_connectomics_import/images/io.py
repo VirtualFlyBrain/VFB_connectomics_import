@@ -1,6 +1,6 @@
 """The served-file half of the BANC image loader: what gets written, swapped and deleted.
 
-Split out from `banc_image_loader.py` on purpose. Everything here can **destroy a served
+Split out from `loader.py` on purpose. Everything here can **destroy a served
 image**, and none of it needs the network, navis, or a transform — so it is the part worth
 reading closely and the part that can be unit-tested outright. The loader keeps the
 fetching, geometry and orchestration; this module owns the filesystem contract.
@@ -16,7 +16,7 @@ happens in exactly two places: sweeping files left over from a previous alignmen
 successful swap, and `remove_all()` for an image the rebuild has positively shown to be
 spurious.
 
-See ISSUES.md IMG-3 (spurious wrong-template images) and the `banc_image_loader` docstring.
+See docs/ISSUES.md IMG-3 (spurious wrong-template images) and the `loader.py` docstring.
 """
 import glob
 import json

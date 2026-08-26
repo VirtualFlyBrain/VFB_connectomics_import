@@ -192,16 +192,44 @@ Also ruled out: the H5 multi-resolution levels are not a speed lever — level 1
 
 ## Deployment shape
 
-- Ship the fields on **local disk** (memmapping a network mount defeats it). Preferred:
-  a persistent cache directory on each Jenkins agent, populated by an idempotent stage
-  step that fetches only when absent and verifies a checksum — rather than a 543 MB
-  container layer. `$BANC_FIELD_DIR` points at it.
-- `banc_baked.register()` then `banc_baked.self_check()` once per process at startup.
+- **The NAS is fine. Put them there**, alongside the H5 transforms, and point
+  `$BANC_FIELD_DIR` at it. An earlier version of this document said to ship them on local
+  disk because "memmapping a network mount defeats it". That was reasoning, not
+  measurement, and **it was wrong** — see below.
+- `transforms.register()` then `transforms.self_check()` once per process at startup.
 - Workers stay **one neuron at a time**; no batching. Worker count is set by network and
   data-server write throughput, not memory or CPU.
 - No elastix in the image. Existing `redo`/skip logic is unchanged.
 - ~543 MB of `.npy` replaces the `transformix` binary and its runtime dependency.
   int16 would halve this for free (see above) if transfer or image size ever matters.
+
+### Why a network mount is fine — measured 2026-08-26
+
+The worry was that memmapping over NFS turns every page fault into a network round-trip.
+It does, but there are very few of them, because the access pattern is **spatially local**:
+a neuron occupies a small box in BANC space, so its lookups touch a small region of the
+2 µm grid, and `map_coordinates(order=1)` only reads the 8 neighbours of each point.
+
+Distinct 4 kB pages of the 223 MB brain field touched, real brain neurons:
+
+| | pages | MB | cumulative |
+|---|---|---|---|
+| 1 neuron (2,469 nodes) | 213 | 0.87 | 0.4% |
+| 5 neurons | — | — | 1.6% |
+| 20 neurons | — | — | **6.0%** |
+
+Per neuron it is **0.2–1.1 MB**, and the marginal cost falls as it goes: the 20th neuron
+touched 123 pages of which only 53 were new. Pages land in the **kernel page cache**, which
+is shared across every worker and every neuron, so after a few hundred neurons almost all
+lookups are RAM hits and the NAS is idle. Worst case — full residency — is 543 MB read once.
+
+`maxtasksperchild` recycling does not undo this: a fresh worker re-maps the same file and
+faults into pages the kernel already holds.
+
+**The one real risk is the mount, not the pattern.** Some NFS exports do not support `mmap`
+at all, or need `nolock`. If `mmap` fails there, use `--no-mmap`, which reads each field
+into the process instead — correct but **543 MB resident per worker** (≈4.3 GB at 8
+workers), so drop the worker count to match.
 
 ### Two data dependencies, not one
 

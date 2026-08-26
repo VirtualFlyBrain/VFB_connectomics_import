@@ -6,7 +6,7 @@ Takes ~30 min: 3.4 min for the brain field, ~28 min for the VNC one.
 
     export PATH="$HOME/opt/elastix/bin:$PATH"
     export DYLD_LIBRARY_PATH="$HOME/opt/elastix/lib:$DYLD_LIBRARY_PATH"   # Linux: LD_LIBRARY_PATH
-    python bake_banc_fields.py [--out DIR] [--step-nm 2000]
+    python -m vfb_connectomics_import.images.bake_fields [--out DIR] [--step-nm 2000]
 
 What it does
 ------------
@@ -119,7 +119,7 @@ def main():
     json.dump(bands, open(os.path.join(args.out, 'support.json'), 'w'), indent=1)
     print(f'\ndone -> {args.out}', flush=True)
     print('Verify with:  python -c "from vfb_connectomics_import.images import transforms as banc_baked; '
-          'banc_baked.self_check()"')
+          'transforms.self_check()"')
 
 
 if __name__ == '__main__':
