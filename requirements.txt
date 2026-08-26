@@ -7,3 +7,16 @@ jsonpath-rw
 pyyaml
 fafbseg
 certifi
+
+# transform / image pipeline (see TRANSFORMS.md)
+flybrains>=0.6.3      # BANC support arrived in 0.6.x; 0.3.0 has none
+navis                 # transform registry + xform_brain
+trimesh               # mesh IO and plane slicing
+fast-simplification   # quadric decimation of the served OBJs (ISSUES.md IMG-1)
+shapely               # required by trimesh.slice_plane, even with cap=False
+scipy                 # map_coordinates for the baked-field lookup
+cloud-volume          # BANC precomputed mesh fetch
+skeletor              # skeletonise the mesh for the 40.7% of roots with no published _skeleton
+pynrrd                # NRRD output for the VFB stack viewer
+numpy                 # pulled in by navis anyway, but imported directly throughout
+plotly                # old-vs-new 3D comparison pages (banc_compare_html.py)

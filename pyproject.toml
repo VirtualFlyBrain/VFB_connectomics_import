@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vfb-connectomics-import"
+version = "0.1.0"
+description = "VirtualFlyBrain connectome import: connectivity, curation TSVs and template images"
+requires-python = ">=3.10"
+dynamic = ["dependencies"]
+
+[project.scripts]
+# Jenkins should call these, not file paths — then a future re-layout breaks nothing.
+vfb-banc-images   = "vfb_connectomics_import.images.loader:main"
+vfb-banc-compare  = "vfb_connectomics_import.images.compare:main"
+vfb-banc-bake     = "vfb_connectomics_import.images.bake_fields:main"
+vfb-n2n-banc      = "vfb_connectomics_import.connectivity.cli.banc:main"
+# catmaid / flywire / neuprint are top-level scripts with no main() (flywire even hardcodes
+# its dataset), so they get no console script. Run them as:
+#   python -m vfb_connectomics_import.connectivity.cli.catmaid --help
+# Give them a main() if you want entry points; deliberately not done here because they are
+# working code outside the scope of this re-layout.
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.package-data]
+"vfb_connectomics_import.connectivity" = ["data_owl/*", "data_tsv/*", "resources/*"]

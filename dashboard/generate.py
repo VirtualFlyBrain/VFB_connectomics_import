@@ -3,7 +3,7 @@
 
 Runs every probe defined in the manifest, then writes:
   dashboard/site/index.html   colour-coded matrix (published to GitHub Pages)
-  dashboard/STATUS.md         emoji matrix for at-a-glance viewing in the repo
+  dashboard/site/STATUS.md    emoji matrix for at-a-glance viewing (also gitignored)
 
 Usage:  python dashboard/generate.py
 No arguments; all configuration lives in connectomes.yaml.
@@ -30,6 +30,32 @@ STATE_STYLE = {
 LIVE_LEGEND = "● live now   ○ done but not live yet"
 
 
+def load_dotenv(path=None):
+    """Read KEY=value lines from a gitignored .env at the repo root, for local runs.
+
+    Stdlib only — no python-dotenv, so the dashboard keeps its two-package
+    dependency list. Real environment variables always win, so a stale local file
+    can never override a secret injected by CI. Returns the number of keys set.
+    """
+    path = path or os.path.join(os.path.dirname(HERE), ".env")
+    try:
+        with open(path) as f:
+            lines = f.readlines()
+    except OSError:
+        return 0
+    count = 0
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key, val = key.strip(), val.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = val
+            count += 1
+    return count
+
+
 def load_manifest():
     with open(os.path.join(HERE, "connectomes.yaml")) as f:
         return yaml.safe_load(f)
@@ -40,6 +66,7 @@ def build_context(meta):
     return {
         "owl_index_url": meta.get("owl_index_url"),
         "pdb_tx_url": meta.get("pdb_tx_url"),
+        "kb_tx_url": meta.get("kb_tx_url"),
         "jenkins_base": meta.get("jenkins_base"),
         "repo_root": repo_root,
     }
@@ -216,6 +243,9 @@ def pages_url(manifest):
 
 
 def main():
+    n = load_dotenv()
+    if n:
+        print("loaded %d key(s) from .env" % n)
     manifest = load_manifest()
     ctx = build_context(manifest.get("meta", {}))
     rows, stage_ids = evaluate(manifest, ctx)

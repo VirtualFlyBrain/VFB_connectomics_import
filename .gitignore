@@ -1,9 +1,10 @@
 .idea
 **/.DS_Store
-src/VFB_connectomics_import/__pycache__
-src/VFB_connectomics_import/*.pyc
-src/VFB_connectomics_import/tests/__pycache__
-src/VFB_connectomics_import/tests/*.pyc
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
 .env
 synapses_v1_human_readable_sizethresh3_connectioncounts_countthresh3.parquet
 .venv/
@@ -16,3 +17,9 @@ dashboard/__pycache__/
 *_n_2_n.tsv
 * copy.*
 dashboard/STATUS.md
+
+# Baked transform fields (~543 MB) — built by bake_banc_fields.py, published alongside
+# VFB's other transforms, never committed. See TRANSFORMS.md.
+banc_transform_fields/
+*_2um.npy
+*_2um.npz

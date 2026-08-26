@@ -1,0 +1,1 @@
+python /Users/alexmclachlan/Documents/GitHub/vfb_connectomics_import/-m vfb_connectomics_import.connectivity.cli.catmaid -t 0 -d catmaid_fafb -c_e https://fafb.catmaid.virtualflybrain.org/ -o test.tsv

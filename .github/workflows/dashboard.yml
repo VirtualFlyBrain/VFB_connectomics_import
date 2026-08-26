@@ -35,18 +35,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The repo is public, so a committed .env cannot be un-leaked — it stays in
+      # git history, forks and caches. Fail loudly rather than publish quietly.
+      - name: Refuse to build if a secrets file was committed
+        run: |
+          if git ls-files --error-unmatch .env 2>/dev/null; then
+            echo "::error::.env is tracked in git. Remove it (git rm --cached .env) and ROTATE the credentials."
+            exit 1
+          fi
+          echo "no tracked .env — ok"
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Install deps
-        run: pip install pyyaml certifi
+        # Dashboard is stdlib-only apart from these two — never the src/ stack.
+        run: pip install -r dashboard/requirements.txt
 
       - name: Generate dashboard
         env:
-          # Optional: enables the "needs update" upstream check for neuPrint.
-          # Add a repo secret named NEUPRINT_TOKEN to turn it on.
+          # All optional. Any absent secret makes its probe degrade to "unknown"
+          # rather than fail, so forks (which never receive secrets) still build.
+          #
+          # Enables the "needs update" upstream check for neuPrint.
           NEUPRINT_TOKEN: ${{ secrets.NEUPRINT_TOKEN }}
+          # Enables KB probes ("authored in KB" vs "released in PDB"). The KB
+          # wants HTTP Basic. Use a READ-ONLY account: probes.py refuses to send
+          # write Cypher, but that guard should not be the only thing stopping it.
+          KB_USER: ${{ secrets.KB_USER }}
+          KB_PASSWORD: ${{ secrets.KB_PASSWORD }}
         run: python dashboard/generate.py
 
       - uses: actions/configure-pages@v5

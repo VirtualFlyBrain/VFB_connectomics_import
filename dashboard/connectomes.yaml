@@ -18,8 +18,24 @@
 #   neuprint_upstream- newer version upstream? (needs NEUPRINT_TOKEN env)
 #   gcs_versions     - newer version folder in a public GCS bucket? (BANC)
 #   pdb_cypher       - query PDB; nonzero result -> live in current release
-#   pdb_dataset      - this version's Site/DataSet record exists & is_data_source?
+#   pdb_dataset      - this version's Site/DataSet record PUBLISHED in PDB?
+#   kb_cypher        - query the KB; nonzero -> curated (done) even if unreleased
+#   kb_dataset       - this version's Site/DataSet record CURATED in the KB?
+#                      Prefer this for the `dataset` cell: the record is authored
+#                      in the KB and PDB only catches up at the next release, so
+#                      probing PDB for a built-but-unreleased version reports
+#                      not_started — i.e. claims nobody started. Needs KB creds.
 #   manual           - fixed state written here (WILL drift — avoid)
+#
+# `version` is the version being TARGETED. Add `built_version` when the artifacts
+# on the data server came from an OLDER version than the target (mid-migration) —
+# the update probes compare against built_version, so the cell stays honestly
+# orange instead of claiming parity with upstream. Omit it when they agree.
+#
+# NOTE: the KB and PDB do not spell short_forms identically (the KB keeps the
+# neuPrint hyphen, e.g. `male-cns_v1_0`; PDB publishes `male_cns_v1_0`). Give
+# `kb_site` / `kb_dataset` alongside `vfb_site` / `vfb_dataset` where they differ;
+# the KB probe falls back to the vfb_* keys when they don't.
 #
 # Fill colours:
 #   done         green   - built & uploaded to the VFB data server
@@ -35,6 +51,12 @@
 meta:
   owl_index_url: https://virtualflybrain.org/data/VFB/OWL/
   pdb_tx_url: https://pdb.virtualflybrain.org/db/data/transaction/commit
+  # KB = the curation database, where records are authored before release.
+  # Needs HTTP Basic auth (KB_USER / KB_PASSWORD); probes degrade to "unknown"
+  # when those are unset, so this being present is harmless on its own.
+  # HTTPS, not HTTP: Basic auth puts the credential on the wire in a trivially
+  # reversible base64, so plaintext http:// would expose it. Verified both work.
+  kb_tx_url: https://kb.virtualflybrain.org/db/data/transaction/commit
   jenkins_base: ""            # TODO team: e.g. https://jenkins.virtualflybrain.org
   github_repo: VirtualFlyBrain/VFB_connectomics_import
 
@@ -59,14 +81,22 @@ connectomes:
     label: "male-CNS"
     provider: neuprint
     version: "1.0"
-    vfb_dataset: Berg2025        # verified against PDB — 'Berg2025a' does not exist
-    vfb_site: male_cns_v1_0        # PDB currently has male_cns_v0_9 -> v1.0 not live yet
+    # TARGET version is v1.0. KB and PDB spell the Site differently (KB keeps the
+    # neuPrint hyphen, PDB underscores it), so both names are given.
+    vfb_dataset: Berg2025a         # v1.0 DataSet. PDB still only has Berg2025 (v0.9)
+    vfb_site: male_cns_v1_0        # PDB spelling; PDB is still on male_cns_v0_9
+    kb_site: male-cns_v1_0         # KB spelling; is_data_source already set here
+    kb_dataset: Berg2025a
     neuprint_dataset: "male-cns"
     runner: src/VFB_connectomics_import/script_runner_neuPrint.py
     owner: adm
     stages:
-      dataset: {fill: {type: pdb_dataset}}
-      neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
+      # Curated in the KB (v1.0 Site is already the data source there); the live
+      # dot is what reports whether it has reached PDB.
+      dataset: {fill: {type: kb_dataset}, live: {type: pdb_cypher}}
+      # 166,701 v1.0 neurons are loaded in the KB but not yet released, so "done"
+      # has to come from the KB; the live dot reports whether PDB has them.
+      neurons: {fill: {type: kb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
       n2n:
         fill:   {type: owl_index, match: 'connectome_malecns.*n2n\.owl'}
@@ -151,16 +181,26 @@ connectomes:
   - id: banc
     label: "BANC"
     provider: gcs
-    version: "626"
-    vfb_dataset: Bates2025
-    vfb_site: BANC626
+    # TARGET is v888 (KB DataSet Bates2026, Site BANC888 — already is_data_source
+    # there). PDB is still on v626 / Bates2025, so the live dots stay off until
+    # release. KB and PDB spell BANC short_forms identically, so no kb_* overrides.
+    version: "888"
+    built_version: "626"           # the OWL on the data server is still v626-derived
+    vfb_dataset: Bates2026         # v626 was Bates2025; 15,779 of its neurons are dropped in v888
+    vfb_site: BANC888
     runner: src/VFB_connectomics_import/script_runner_BANC.py
     owner: adm
     stages:
-      dataset: {fill: {type: pdb_dataset}}
-      neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
+      dataset: {fill: {type: kb_dataset}, live: {type: pdb_cypher}}
+      # 146,511 v888 neurons are in the KB, unreleased — see the malecns entry.
+      neurons: {fill: {type: kb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
       n2n:
+        # connectome_BANC_n2n.owl is still v626-derived, and its filename carries no
+        # version for owl_index to discriminate on — hence `built_version` above,
+        # which keeps this cell honestly orange until it is rebuilt from the v888
+        # parquet. Bump built_version to 888 when that is done (and consider putting
+        # the version in the OWL filename so owl_index can do this unaided).
         fill:   {type: owl_index, match: 'connectome_BANC_n2n\.owl'}
         update: {type: gcs_versions, bucket: lee-lab_brain-and-nerve-cord-fly-connectome, prefix: 'neuron_connectivity/', pattern: 'v(\d+)'}
         live:   {type: pdb_cypher}

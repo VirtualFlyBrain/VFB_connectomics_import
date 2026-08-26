@@ -16,6 +16,7 @@ An update probe returns (needs_update, detail):
     needs_update is True / False / None
 """
 
+import base64
 import glob
 import json
 import os
@@ -28,6 +29,21 @@ import urllib.error
 FILL_STATES = ("done", "needs_update", "in_progress", "not_started", "unknown")
 
 _HTTP_TIMEOUT = 25
+
+# Server-side budget for a single Cypher statement, in ms.
+#
+# A client timeout only ends OUR side of the conversation — the transaction keeps
+# running on the database. VFB has been bitten by exactly this: a runaway query
+# took pdb.virtualflybrain.org down and carried on after the client had given up
+# and been killed, with each retry stacking another copy onto an already
+# struggling server. Neo4j's HTTP API honours `max-execution-time`; the
+# documented `Neo4j-Transaction-Timeout` is ignored by this server.
+#
+# Deliberately ABOVE _HTTP_TIMEOUT: we abandon at 25s, so anything this budget
+# kills is work we already stopped waiting for. That ordering means the budget
+# can never turn a query we'd have accepted into a spurious ExecutionFailed.
+_MAX_EXECUTION_MS = 60000
+
 _index_cache = {}   # url -> {filename: (date_str, size_int)}
 
 # Build a verified SSL context (prefer certifi's CA bundle if installed).
@@ -40,18 +56,144 @@ _UNVERIFIED_CTX = ssl._create_unverified_context()
 
 
 # --------------------------------------------------------------------------- #
+# safety rails
+#
+# These do not assume anything about what a credential is *allowed* to do. The
+# KB account may be read-only today; it may not be tomorrow, and a different
+# credential may be used later. The guard is the thing that stays true.
+# --------------------------------------------------------------------------- #
+class ReadOnlyViolation(Exception):
+    """Raised rather than sending a statement that could mutate the graph."""
+
+
+# Clauses that write, plus CALL. CALL is included because it is precisely how a
+# denylist like this gets bypassed (apoc.cypher.runWrite, apoc.do.when, ...) —
+# blocking it is what makes the rest of the list hold. No probe needs it.
+_WRITE_CLAUSES = ("CREATE", "MERGE", "DELETE", "DETACH", "SET", "REMOVE", "DROP",
+                  "FOREACH", "CALL", "LOAD", "TERMINATE", "GRANT", "REVOKE")
+_WRITE_RE = re.compile(r"\b(%s)\b" % "|".join(_WRITE_CLAUSES), re.IGNORECASE)
+
+
+def _assert_read_only(payload):
+    """Reject any Cypher that isn't plainly a read.
+
+    Matters because connectomes.yaml accepts arbitrary `query:` strings. That is
+    harmless against public read-only PDB, but the same code path carries KB
+    credentials — so a typo or an edit to that YAML must not be able to write.
+    Word-boundary matching keeps identifiers like `DataSet`, `is_data_source`
+    and `database_cross_reference` from tripping it.
+    """
+    for stmt in (payload or {}).get("statements") or []:
+        hit = _WRITE_RE.search(stmt.get("statement") or "")
+        if hit:
+            raise ReadOnlyViolation(
+                "refusing to send non-read-only Cypher (found %r)"
+                % hit.group(1).upper())
+
+
+# Env vars whose values must never reach the published page. KB_USER is
+# deliberately absent: a username is not a secret, and blanket-replacing a
+# common value like "neo4j" would corrupt legitimate text such as
+# 'Basic realm="Neo4j"'.
+_SECRET_ENV_VARS = ("KB_PASSWORD", "NEUPRINT_TOKEN")
+_USERINFO_RE = re.compile(r"://[^/\s:@]+:[^/\s@]+@")
+
+
+def _secret_values():
+    """Every string that must never be published — including DERIVED forms.
+
+    Actions masks the literal secret in logs, but not transformations of it:
+    base64("user:pass") is not the secret string, so neither Actions' masking nor
+    a plain replace() of KB_PASSWORD would catch an Authorization header that
+    leaked into an error message — and it decodes straight back to the password.
+    """
+    out = []
+    for name in _SECRET_ENV_VARS:
+        val = os.environ.get(name)
+        if val and len(val) >= 3:
+            out.append((val, name))
+    user, password = os.environ.get("KB_USER"), os.environ.get("KB_PASSWORD")
+    if user and password:
+        basic = base64.b64encode(("%s:%s" % (user, password)).encode("utf-8"))
+        out.append((basic.decode("ascii"), "KB_BASIC_AUTH"))
+    return out
+
+
+def _scrub(text):
+    """Strip known secrets from a string headed for site/index.html.
+
+    GitHub Actions masks secrets in *logs*, but the dashboard writes probe
+    details into a page it publishes to GitHub Pages — that masking does not
+    apply there, so it has to happen here.
+    """
+    if not text:
+        return text
+    out = str(text)
+    for val, name in _secret_values():
+        out = out.replace(val, "***%s***" % name)
+    return _USERINFO_RE.sub("://***:***@", out)
+
+
+def kb_auth_header():
+    """Basic auth header for the KB, or None when no credential is configured.
+
+    The KB answers 401 with `Basic realm="Neo4j"`. Sent as a header rather than
+    URL userinfo so it cannot end up inside an exception string.
+    """
+    user = os.environ.get("KB_USER")
+    password = os.environ.get("KB_PASSWORD")
+    if not user or not password:
+        return None
+    token = base64.b64encode(("%s:%s" % (user, password)).encode("utf-8"))
+    return {"Authorization": "Basic " + token.decode("ascii")}
+
+
+# --------------------------------------------------------------------------- #
 # low-level HTTP helpers
 # --------------------------------------------------------------------------- #
+class UnverifiedCredentialError(Exception):
+    """Raised instead of re-sending a credential over an unverified connection."""
+
+
+# Header names that carry a secret. Checked case-insensitively, because
+# urllib rewrites header keys with str.capitalize().
+_SECRET_HEADERS = frozenset((
+    "authorization", "proxy-authorization", "cookie", "x-api-key",
+    "api-key", "token", "x-auth-token", "private-token",
+))
+
+
+def _carries_credential(req):
+    names = list(req.headers) + list(getattr(req, "unredirected_hdrs", None) or {})
+    return any(n.lower() in _SECRET_HEADERS for n in names)
+
+
 def _urlopen(req):
     """Open a request, falling back to an unverified context only if the local
-    trust store can't validate the cert (public read-only endpoints)."""
+    trust store can't validate the cert.
+
+    The fallback exists because a machine with an empty CA store (a python.org
+    macOS build has zero roots) would otherwise fail every probe. For the public
+    read-only endpoints that trade is fine — the worst case is a wrong colour on
+    a dashboard cell.
+
+    It is NOT fine for a request carrying a credential: retrying unverified would
+    hand the secret (e.g. NEUPRINT_TOKEN) to an unauthenticated peer. Those are
+    allowed to fail, and the calling probe degrades to "unknown" — which is
+    exactly what it already does when the token is missing entirely.
+    """
     try:
         return urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT, context=_SSL_CTX)
     except urllib.error.URLError as e:
-        if isinstance(getattr(e, "reason", None), ssl.SSLCertVerificationError):
-            return urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT,
-                                          context=_UNVERIFIED_CTX)
-        raise
+        if not isinstance(getattr(e, "reason", None), ssl.SSLCertVerificationError):
+            raise
+        if _carries_credential(req):
+            raise UnverifiedCredentialError(
+                "refusing to retry an authenticated request without TLS "
+                "verification (%s) — install certifi or fix the CA store" % e.reason
+            ) from e
+        return urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT,
+                                      context=_UNVERIFIED_CTX)
 
 
 def _get(url, headers=None):
@@ -61,8 +203,17 @@ def _get(url, headers=None):
 
 
 def _post_json(url, payload, headers=None):
+    """POST a Neo4j transaction payload. This is the ONLY way the dashboard talks
+    to PDB — no vfb_connect, no driver, no session to initialise: a probe is just
+    'send Cypher, check the response'.
+
+    Every Cypher statement passes _assert_read_only here, so the guard cannot be
+    sidestepped by a new probe forgetting to call it.
+    """
+    _assert_read_only(payload)
     data = json.dumps(payload).encode("utf-8")
-    hdrs = {"Content-Type": "application/json", "Accept": "application/json"}
+    hdrs = {"Content-Type": "application/json", "Accept": "application/json",
+            "max-execution-time": str(_MAX_EXECUTION_MS)}
     hdrs.update(headers or {})
     req = urllib.request.Request(url, data=data, headers=hdrs, method="POST")
     with _urlopen(req) as r:
@@ -148,6 +299,22 @@ def _parse_version(s):
     return tuple(int(n) for n in nums)
 
 
+def _built_version(connectome):
+    """The version the BUILT ARTIFACTS came from — what an update probe must
+    compare against.
+
+    `version` in the manifest is the version being TARGETED, which is not the
+    same thing once a migration is under way: BANC targets v888 while the OWL on
+    the data server is still built from v626. Comparing the target against
+    upstream would report "up to date" and hide the stale artifact, because
+    artifact filenames carry no version for `owl_index` to discriminate on.
+
+    Connectomes that are not mid-migration omit `built_version` and get the old
+    behaviour.
+    """
+    return connectome.get("built_version") or connectome.get("version")
+
+
 def probe_neuprint_upstream(cfg, ctx, connectome):
     """Compare the connectome's local version to the newest version neuPrint
     offers. neuPrint's /api/dbmeta/datasets (== Client.fetch_datasets) keys each
@@ -173,11 +340,11 @@ def probe_neuprint_upstream(cfg, ctx, connectome):
         return None, "dataset '%s' not found upstream" % ds
     candidates.sort()
     _, latest, last_mod = candidates[-1]
-    local = connectome.get("version")
+    local = _built_version(connectome)
     if not local:
         return None, "upstream latest %s (no local version to compare)" % latest
     if _parse_version(local) < _parse_version(latest):
-        return True, "upstream %s available (local %s, mod %s)" % (latest, local, last_mod)
+        return True, "upstream %s available (built from %s, mod %s)" % (latest, local, last_mod)
     return False, "up to date (upstream latest %s)" % latest
 
 
@@ -210,11 +377,11 @@ def probe_gcs_versions(cfg, ctx, connectome):
         return None, "no versioned folders under gs://%s/%s" % (bucket, prefix)
     versions.sort()
     latest = versions[-1][1]
-    local = connectome.get("version")
+    local = _built_version(connectome)
     if not local:
         return None, "gcs latest v%s (no local version to compare)" % latest
     if _parse_version(local) < _parse_version(latest):
-        return True, "gcs v%s available (local v%s)" % (latest, local)
+        return True, "gcs v%s available (built from v%s)" % (latest, local)
     return False, "up to date (gcs latest v%s)" % latest
 
 
@@ -222,6 +389,10 @@ def _default_live_query(stage_id, site):
     """Stage-aware default Cypher; returns None if no sensible default."""
     if not site:
         return None
+    if stage_id == "dataset":
+        # Existence of the Site node itself, not neurons hanging off it: the
+        # dataset record can be published a release before any neuron is.
+        return "MATCH (s:Site {short_form:'%s'}) RETURN count(s) AS c" % site
     base = ("MATCH (n)-[:database_cross_reference|hasDbXref]-"
             "(:Site {short_form:'%s'}) " % site)
     if stage_id == "neurons":
@@ -277,6 +448,50 @@ def probe_pdb_exists(cfg, ctx, connectome, stage_id):
     return "unknown", detail
 
 
+def probe_kb_cypher(cfg, ctx, connectome, stage_id):
+    """Same as `probe_pdb_cypher` but against the KB, using the KB's short_form.
+
+    Needed because "done" and "live" are NOT the same fact for a version still
+    being prepared: neurons can be fully loaded in the KB for a release that PDB
+    has not published yet. Probing PDB alone reports not_started and so claims
+    the loading has not begun.
+    """
+    headers = kb_auth_header()
+    if not headers:
+        return None, "KB_USER / KB_PASSWORD not set — cannot check the KB"
+    url = ctx.get("kb_tx_url")
+    if not url:
+        return None, "no kb_tx_url configured in manifest meta"
+    query = cfg.get("query")
+    if not query:
+        site = connectome.get("kb_site") or connectome.get("vfb_site")
+        query = _default_live_query(stage_id, site)
+    if not query:
+        return None, "no KB query for this cell"
+    try:
+        res = _post_json(url, {"statements": [{"statement": query}]}, headers=headers)
+    except Exception as e:                # noqa: BLE001
+        return None, "KB unreachable: %s" % e
+    if res.get("errors"):
+        return None, "KB query error: %s" % res["errors"]
+    try:
+        count = res["results"][0]["data"][0]["row"][0]
+    except (KeyError, IndexError, TypeError):
+        return None, "KB returned no rows"
+    present = bool(count and count > 0)
+    return present, (("%s in KB" % count) if present else "nothing in KB")
+
+
+def probe_kb_exists(cfg, ctx, connectome, stage_id):
+    """Fill probe: curated in the KB -> done, else not_started."""
+    present, detail = probe_kb_cypher(cfg, ctx, connectome, stage_id)
+    if present is True:
+        return "done", detail
+    if present is False:
+        return "not_started", detail
+    return "unknown", detail
+
+
 # --------------------------------------------------------------------------- #
 # pdb_dataset — does this version's Site / DataSet record exist yet?
 # --------------------------------------------------------------------------- #
@@ -293,8 +508,9 @@ def _truthy(v):
     return bool(v)
 
 
-def probe_pdb_dataset(cfg, ctx, connectome, stage_id=None):
-    """Fill probe for the 'Dataset record' stage — the earliest import step.
+def _dataset_record_probe(ctx, connectome, store, url_key, site_key, ds_key,
+                          headers=None):
+    """Shared implementation of the 'Dataset record' stage check.
 
     Per VFB versioning (https://virtualflybrain.org/docs/data/em/versioning/)
     each release is a NEW Site, and the `Connectome` label + `is_data_source`
@@ -306,32 +522,41 @@ def probe_pdb_dataset(cfg, ctx, connectome, stage_id=None):
       Site exists, flag NOT set        -> in_progress (record built, not yet
                                          the current source for this release)
 
-    The DataSet node is only checked when the manifest supplies `vfb_dataset`;
+    Runs against either store. KB and PDB do NOT share short_form spelling —
+    the KB writes e.g. `male-cns_v1_0` and PDB publishes it as `male_cns_v1_0`
+    — so each store gets its own manifest key, falling back to the PDB one when
+    a connectome does not need to distinguish them.
+
+    The DataSet node is only checked when the manifest supplies a dataset name;
     an absent field is reported, never treated as a failure.
     """
-    site = connectome.get("vfb_site")
+    site = connectome.get(site_key) or connectome.get("vfb_site")
     if not site:
-        return "unknown", "no vfb_site in manifest"
-    ds = connectome.get("vfb_dataset")
+        return "unknown", "no %s in manifest" % site_key
+    url = ctx.get(url_key)
+    if not url:
+        return "unknown", "no %s configured in manifest meta" % url_key
+    ds = connectome.get(ds_key) or connectome.get("vfb_dataset")
     stmts = [{"statement": _SITE_Q, "parameters": {"sf": site}}]
     if ds:
         stmts.append({"statement": _DS_Q, "parameters": {"df": ds}})
     try:
-        res = _post_json(ctx["pdb_tx_url"], {"statements": stmts})
+        res = _post_json(url, {"statements": stmts}, headers=headers)
     except Exception as e:                # noqa: BLE001
-        return "unknown", "PDB unreachable: %s" % e
+        return "unknown", "%s unreachable: %s" % (store, e)
     if res.get("errors"):
-        return "unknown", "PDB query error: %s" % res["errors"]
+        return "unknown", "%s query error: %s" % (store, res["errors"])
 
     results = res.get("results") or []
     rows = (results[0].get("data") if results else None) or []
     if not rows:
-        return "not_started", "no Site '%s' in KB yet" % site
+        return "not_started", "no Site '%s' in %s yet" % (site, store)
     row = list(rows[0].get("row") or [])
     if len(row) < 2:
         # Response shape changed under us — say "unknown" rather than silently
         # reporting every connectome as in_progress.
-        return "unknown", "unexpected PDB response shape for Site '%s'" % site
+        return "unknown", ("unexpected %s response shape for Site '%s'"
+                           % (store, site))
     conn, flag = row[0], row[1]
 
     if ds:
@@ -340,17 +565,44 @@ def probe_pdb_dataset(cfg, ctx, connectome, stage_id=None):
         except (IndexError, KeyError, TypeError):
             ds_count = None
         if ds_count == 0:
-            return "in_progress", ("Site '%s' present but DataSet '%s' missing"
-                                   % (site, ds))
+            return "in_progress", ("Site '%s' present in %s but DataSet '%s' missing"
+                                   % (site, store, ds))
         ds_note = "DataSet %s present" % ds
     else:
-        ds_note = "DataSet not checked (no vfb_dataset in manifest)"
+        ds_note = "DataSet not checked (no dataset name in manifest)"
 
     if not _truthy(flag):
-        return "in_progress", ("Site '%s' exists but is_data_source is unset — not "
-                               "yet the current source; %s" % (site, ds_note))
+        return "in_progress", ("Site '%s' exists in %s but is_data_source is unset "
+                               "— not yet the current source; %s"
+                               % (site, store, ds_note))
     extra = "" if _truthy(conn) else "; warning: no Connectome label"
-    return "done", "Site '%s' is current data source; %s%s" % (site, ds_note, extra)
+    return "done", ("Site '%s' is current data source in %s; %s%s"
+                    % (site, store, ds_note, extra))
+
+
+def probe_pdb_dataset(cfg, ctx, connectome, stage_id=None):
+    """'Dataset record' as PUBLISHED — the record is live in the current release."""
+    return _dataset_record_probe(ctx, connectome, "PDB", "pdb_tx_url",
+                                 "vfb_site", "vfb_dataset")
+
+
+def probe_kb_dataset(cfg, ctx, connectome, stage_id=None):
+    """'Dataset record' as CURATED — the record has been authored in the KB.
+
+    Use this rather than `pdb_dataset` for the dataset cell: creating the Site /
+    DataSet nodes is a curation step that happens in the KB, and PDB only catches
+    up at the next release. Probing PDB for a target version that has been built
+    but not yet released reports `not_started`, which reads as "nobody has begun"
+    when in fact the work is done and waiting — the one claim this dashboard is
+    not allowed to make. The `live` dot is what tracks reaching PDB.
+
+    Needs KB_USER / KB_PASSWORD; degrades to "unknown" without them.
+    """
+    headers = kb_auth_header()
+    if not headers:
+        return "unknown", "KB_USER / KB_PASSWORD not set — cannot check the KB"
+    return _dataset_record_probe(ctx, connectome, "KB", "kb_tx_url",
+                                 "kb_site", "kb_dataset", headers=headers)
 
 
 # --------------------------------------------------------------------------- #
@@ -363,6 +615,8 @@ _FILL = {
     "manual": probe_manual,
     "pdb_cypher": probe_pdb_exists,
     "pdb_dataset": probe_pdb_dataset,
+    "kb_dataset": probe_kb_dataset,
+    "kb_cypher": probe_kb_exists,
 }
 
 
@@ -375,9 +629,10 @@ def run_fill(cfg, ctx, connectome, stage_id):
     if not fn:
         return "unknown", "unknown probe type: %s" % cfg.get("type")
     try:
-        return fn(cfg, ctx, connectome, stage_id)
+        state, detail = fn(cfg, ctx, connectome, stage_id)
     except Exception as e:                # noqa: BLE001
-        return "unknown", "probe error: %s" % e
+        return "unknown", _scrub("probe error: %s" % e)
+    return state, _scrub(detail)
 
 
 _UPDATE = {
@@ -393,15 +648,17 @@ def run_update(cfg, ctx, connectome):
     if not fn:
         return None, ""
     try:
-        return fn(cfg, ctx, connectome)
+        needs, detail = fn(cfg, ctx, connectome)
     except Exception as e:                # noqa: BLE001
-        return None, "update probe error: %s" % e
+        return None, _scrub("update probe error: %s" % e)
+    return needs, _scrub(detail)
 
 
 def run_live(cfg, ctx, connectome, stage_id):
     if not cfg or cfg.get("type") != "pdb_cypher":
         return None, ""
     try:
-        return probe_pdb_cypher(cfg, ctx, connectome, stage_id)
+        live, detail = probe_pdb_cypher(cfg, ctx, connectome, stage_id)
     except Exception as e:                # noqa: BLE001
-        return None, "live probe error: %s" % e
+        return None, _scrub("live probe error: %s" % e)
+    return live, _scrub(detail)

@@ -1,3 +1,0 @@
-ID	TYPE	FACT1	TBARS	UPSTREAM	DOWNSTREAM
-ID	TYPE	I 'has presynaptic terminal in'	>AT n2o:Tbars^^xsd:integer	>AT n2o:upstream^^xsd:integer	>AT n2o:downstream^^xsd:integer
-VFB:jrcv07ps	owl:NamedIndividual	VFB:jrcv07pu	1922	1	

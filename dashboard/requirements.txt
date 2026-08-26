@@ -1,0 +1,12 @@
+# Dashboard dependencies — deliberately minimal.
+#
+# The dashboard talks to PDB by POSTing Cypher to Neo4j's HTTP transaction
+# endpoint (meta.pdb_tx_url) using nothing but the standard library, so it does
+# NOT need vfb_connect / VFBquery / pandas / neuprint-python. Every probe is
+# "send Cypher -> check the response", and keeping it stdlib-only is what makes
+# the nightly CI job fast and unbreakable by the import stack's dependencies.
+#
+# Do not add vfb_connect here. It is needed only by the import scripts under
+# src/ (KB writes need credentials); see the root requirements.txt for those.
+pyyaml
+certifi        # CA bundle, so the SSL-verify fallback in probes.py stays rare

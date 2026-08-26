@@ -1,0 +1,64 @@
+import sys
+
+# Fail fast on Python versions that are too old for upstream deps (neuprint uses
+# structural pattern matching introduced in Python 3.10).
+if sys.version_info < (3, 10):
+	raise RuntimeError(
+		"This script requires Python 3.10+ (found Python %d.%d). "
+		"Please upgrade the interpreter in CI or pin 'neuprint-python' to a "
+		"compatible version in requirements.txt." % (
+			sys.version_info.major, sys.version_info.minor
+		)
+	)
+
+from vfb_connectomics_import.connectivity.core import ConnectomicsImport
+import argparse
+
+#Setup arguments for argparse to allow input of ds, doi and filepaths in terminal
+parser = argparse.ArgumentParser(description='Script accepts a VFB dataset name and external database login details (neuprint/CATMAID (only neuprint currently)) and returns the neuron-neuron connectivity between the neurons in the dataset. A threshold can be set to filter out connections at or below the threshold (default=1).')
+parser.add_argument('--threshold', '-t', type=int, help='Neuron-neuron connections which are not greater than this integer will be omitted')
+parser.add_argument('--dataset', '-d', type=str, help='VFB dataset string')
+parser.add_argument('--catmaid_endpoint', '-c_e', type=str, help='CATMAID endpoint URL string (see VFB website for public CATMAID servers')
+parser.add_argument('--output_file', '-o', type=str, help='output filepath')
+#add catmaid/neuprint as arg
+args = vars(parser.parse_args())
+
+#asign args to variables
+threshold = args['threshold']
+dataset = args['dataset']
+catmaid_endpoint = args['catmaid_endpoint']
+output_file=args['output_file']
+
+# for testing FAFB
+# threshold = 100
+# dataset = 'catmaid_fafb'
+# catmaid_endpoint = 'https://fafb.catmaid.virtualflybrain.org/'
+# output_file = 'test.tsv'
+
+#for testing L1EM
+# threshold = 1
+# dataset = 'catmaid_l1em'
+# catmaid_endpoint = 'https://l1em.catmaid.virtualflybrain.org/'
+# output_file = 'test.tsv'
+
+ci=ConnectomicsImport(catmaid_endpoint=catmaid_endpoint)
+
+# For CATMAID, the 'dataset' parameter is actually the Site short_form (e.g., 'catmaid_fafb')
+# We need to query across all datasets that use this CATMAID instance
+# So we pass dataset as the 'db' parameter to match on Site nodes
+accessions=ci.get_accessions_from_vfb(dataset=None, db=dataset)
+
+# Check if any accessions were found
+if not accessions:
+    print(f"ERROR: No neuron accessions found for CATMAID site '{dataset}'. Cannot proceed with connectivity import.")
+    print("Please verify that:")
+    print("  1. The CATMAID site name is correct (e.g., 'catmaid_fafb', 'catmaid_l1em')")
+    print("  2. The VFB knowledge base has neurons with cross-references to this CATMAID site")
+    print("  3. The Site node exists in VFB with the correct short_form")
+    sys.exit(1)
+
+conn_df=ci.get_adjacencies_CATMAID(accessions, threshold=threshold)
+
+robot_template_df=ci.generate_n_n_template(dataset, conn_df)
+
+robot_template_df.to_csv(output_file, sep='\t', index=False)
