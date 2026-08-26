@@ -20,3 +20,5 @@ skeletor              # skeletonise the mesh for the 40.7% of roots with no publ
 pynrrd                # NRRD output for the VFB stack viewer
 numpy                 # pulled in by navis anyway, but imported directly throughout
 plotly                # old-vs-new 3D comparison pages (banc_compare_html.py)
+protobuf>=4.25.8 # not directly required, pinned by Snyk to avoid a vulnerability
+pyasn1>=0.6.3 # not directly required, pinned by Snyk to avoid a vulnerability
