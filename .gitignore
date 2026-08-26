@@ -23,3 +23,9 @@ dashboard/STATUS.md
 banc_transform_fields/
 *_2um.npy
 *_2um.npz
+
+# Jenkins workspace outputs — the workspace is a checkout, so these land in the tree
+ledger-*.jsonl
+report-*.csv
+archive/
+compare/

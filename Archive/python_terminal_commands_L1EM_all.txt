@@ -1,1 +1,0 @@
-python /Users/alexmclachlan/Documents/GitHub/vfb_connectomics_import/-m vfb_connectomics_import.connectivity.cli.catmaid -t 0 -d catmaid_l1em -c_e https://l1em.catmaid.virtualflybrain.org/ -o test.tsv

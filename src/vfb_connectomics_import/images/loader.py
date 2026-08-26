@@ -134,6 +134,10 @@ SWC_PREFIX = f'compiled_data/banc_{MAT}/banc_banc_space_swc'
 KB_ENDPOINT = os.environ.get('KB_ENDPOINT', 'http://kb.virtualflybrain.org:80')
 DATASET = 'Bates2026'             # Bates2026 = BANC v888
 SITE = 'BANC888'                  # the Site/Connectome node carrying v888 accessions
+#: SWC files in the bucket's banc_banc_space_swc/ as of 2026-08-25 — 108,483
+#: `_skeleton` + 76,797 `_l2`, mutually exclusive, one per v888 root that has one.
+#: Used only to judge whether a staged mirror is complete.
+EXPECTED_SWC = 185_280
 VFB_URL_PREFIXES = ('http://www.virtualflybrain.org/data/',
                     'https://www.virtualflybrain.org/data/')
 
@@ -1047,10 +1051,23 @@ def preflight(args, regions):
 
     if args.skeleton_dir and os.path.isdir(args.skeleton_dir):
         n = len([f for f in os.listdir(args.skeleton_dir) if f.endswith('.swc')])
-        print(f'staged skeletons: {args.skeleton_dir} ({n:,} files)')
+        pct = 100.0 * n / EXPECTED_SWC
+        print(f'staged skeletons: {args.skeleton_dir} ({n:,} files, '
+              f'{pct:.1f}% of the expected {EXPECTED_SWC:,})')
+        if n < 0.95 * EXPECTED_SWC:
+            # A staged dir is authoritative — a miss does NOT fall back to the bucket, it
+            # falls through to skeletonising the mesh. So a half-finished rsync silently
+            # downgrades published skeletons instead of failing, which is worth shouting
+            # about rather than printing a number nobody reads.
+            print(f'  *** WARNING: the mirror looks INCOMPLETE ({EXPECTED_SWC - n:,} '
+                  f'files short). A staged directory is treated as authoritative: '
+                  f'missing files do NOT fall back to the bucket, they fall through to '
+                  f'skeletonising the mesh. Finish the rsync, or unset --skeleton-dir to '
+                  f'fetch per neuron. ***', flush=True)
     else:
         print(f'staged skeletons: none ({args.skeleton_dir or "--skeleton-dir unset"}); '
-              f'per-neuron HTTPS fetch adds ~0.5 s/neuron')
+              f'per-neuron HTTPS fetch adds ~0.5 s/neuron '
+              f'(~2.6 h of wall clock over the full brain run at 8 workers)')
     if args.mode == 'replace' and not args.ledger:
         print('WARNING: --mode replace without --ledger. Nothing will record where this '
               'run got to, so a restart begins again from the first neuron.')

@@ -6,8 +6,24 @@ build-backend = "setuptools.build_meta"
 name = "vfb-connectomics-import"
 version = "0.1.0"
 description = "VirtualFlyBrain connectome import: connectivity, curation TSVs and template images"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 dynamic = ["dependencies"]
+
+[project.optional-dependencies]
+# The image job needs none of the connectivity stack (vfb_connect, neuprint-python,
+# python-catmaid, jsonpath-rw, fafbseg). Keeping it separate matters practically: the
+# Jenkins node has only Python 3.9, and neuprint-python needs 3.10+, so installing
+# everything would fail on a job that does not need any of it.
+images = [
+    "navis", "flybrains>=0.6.3", "trimesh", "shapely", "scipy", "numpy",
+    "cloud-volume", "skeletor", "pynrrd", "plotly", "certifi",
+    # fast-simplification 0.2.0 declares >=3.9 but ships NO cp39 wheels — the last
+    # version with one is 0.1.9. Without this marker pip tries to build 0.2.0 from
+    # source and fails on CMake. The Jenkins node is 3.9, so this matters.
+    'fast-simplification<0.2; python_version < "3.10"',
+    'fast-simplification; python_version >= "3.10"',
+    "pandas",
+]
 
 [project.scripts]
 # Jenkins should call these, not file paths — then a future re-layout breaks nothing.
