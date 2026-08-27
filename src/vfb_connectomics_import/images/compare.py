@@ -220,6 +220,17 @@ def write_plotlyjs(out_dir):
     return p
 
 
+def _dec_cell(meta):
+    """Index cell answering "was the served OBJ decimated?" — the thing you scan for."""
+    n, faces = meta.get('obj_faces'), meta.get('faces') or 0
+    if n is None:
+        return '<td class="k">—</td>'
+    if faces and n < faces:
+        return (f'<td class="dec"><b>{faces:,} &rarr; {n:,}</b><br>'
+                f'<span class="k">{faces / n:.1f}x</span></td>')
+    return f'<td class="k">{n:,} (no)</td>'
+
+
 def write_index(rows, out_dir):
     head = ''.join(f'<th>{label}</th>' for label, *_ in LAYERS)
     body = ''
@@ -231,11 +242,15 @@ def write_index(rows, out_dir):
         body += (f'<tr><td><a href="{os.path.basename(path)}">{meta.get("root")}</a></td>'
                  f'<td>{meta.get("region")}</td><td>{meta.get("status")}</td>'
                  f'<td>{meta.get("swc_source")}</td>'
-                 f'<td>{meta.get("nodes")}/{meta.get("faces")}</td>{cells}</tr>')
+                 f'<td>{meta.get("nodes")}/{meta.get("faces")}</td>'
+                 f'{_dec_cell(meta)}{cells}</tr>')
     counts = {}
     for _, meta, _ in rows:
         counts[meta.get('status')] = counts.get(meta.get('status'), 0) + 1
     summary = '  '.join(f'{k}={v}' for k, v in sorted(counts.items()))
+    dec = sum(1 for _, m, _ in rows
+              if m.get('obj_faces') is not None and (m.get('faces') or 0) > m['obj_faces'])
+    summary += f'  &nbsp;|&nbsp; OBJ decimated: {dec}'
     p = os.path.join(out_dir, 'index.html')
     with open(p, 'w') as fh:
         fh.write(f"""<style>
@@ -243,11 +258,12 @@ def write_index(rows, out_dir):
  table {{ border-collapse: collapse; }}
  th, td {{ padding: 4px 10px; border-bottom: 1px solid #eee; text-align: left; }}
  .ok {{ color: #197; }} .miss {{ color: #c33; font-weight: 600; }}
+ .k {{ color: #888; }} .dec {{ color: #036; }}
 </style>
 <h2>BANC image comparison — {len(rows)} neuron(s)</h2>
 <p>{summary}</p>
 <table><tr><th>root</th><th>region</th><th>status</th><th>skel source</th>
-<th>nodes/faces</th>{head}</tr>{body}</table>""")
+<th>nodes/faces</th><th>OBJ decimated</th>{head}</tr>{body}</table>""")
     return p
 
 

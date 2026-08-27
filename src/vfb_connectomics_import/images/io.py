@@ -29,18 +29,28 @@ PRODUCTS = {'swc': 'volume.swc', 'obj': 'volume_man.obj', 'nrrd': 'volume.nrrd'}
 #: Globs for everything VFB serves per neuron. Used to decide whether an image exists at
 #: all, and to clear one that turns out to be spurious — NOT to decide what a successful
 #: replacement sweeps away (see SWEEP_AFTER_SWAP).
-#: Confirmed served 2026-08-26: volume.swc, volume.nrrd, volume_man.obj, volume.obj,
-#: volume.wlz, thumbnail.png, thumbnailT.png.
+#: Confirmed served 2026-08-27, eight files: volume.swc, volume.nrrd, volume_man.obj,
+#: volume.obj, volume.wlz, volume.dps.pkl, thumbnail.png, thumbnailT.png. The dps.pkl is
+#: not fetchable by guessing a URL — it was found in a `deleted_spurious` report row.
 SERVED_GLOBS = ('volume*', 'thumbnail*')
 
 #: Extra files removed after a successful swap, beyond the products this run wrote.
-#: Decided 2026-08-26: replace the three we generate, additionally delete `volume.obj`,
-#: and **leave everything else** — `volume.wlz`, `thumbnail*` and anything new. Those will
-#: be briefly out of sync with the new alignment, which is accepted: other jobs refresh
-#: them in time, and the alternative (deleting products nothing here regenerates) is worse.
-#: An earlier version swept `volume*` + `thumbnail*` wholesale, which removed 5 files per
-#: neuron including `volume.wlz`.
-SWEEP_AFTER_SWAP = ('volume.obj',)
+#: Decided 2026-08-26/27. Replace the three we generate, additionally delete these two,
+#: and **leave everything else** — `volume.wlz` and `thumbnail*` go briefly out of sync
+#: with the new alignment, which is accepted because other jobs refresh them and deleting
+#: products nothing here regenerates would be worse.
+#:
+#: `volume.dps.pkl` is a navis Dotprops pickle, the input to NBLAST. It MUST be deleted,
+#: for a reason particular to how NBLAST updates: the job compares each neuron's per-folder
+#: dps against a combined cache and only re-adds it if it has changed. A stale dps left
+#: beside a replaced image therefore compares as *unchanged*, and the cache keeps the old
+#: shape indefinitely. Deleting it forces regeneration. This matters more than a stale
+#: thumbnail — for the ~40% of neurons whose skeleton source changed, the shape NBLAST
+#: matches on would be materially wrong, not merely slightly shifted.
+#:
+#: An earlier version swept `volume*` + `thumbnail*` wholesale, removing 8 files per neuron
+#: including `volume.wlz`, which nothing in this repo regenerates.
+SWEEP_AFTER_SWAP = ('volume.obj', 'volume.dps.pkl')
 
 #: Statuses meaning "this neuron has been dealt with; do not redo it on resume".
 #: 'error' is deliberately absent — errors must be retried.

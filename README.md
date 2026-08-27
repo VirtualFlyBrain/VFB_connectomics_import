@@ -42,8 +42,10 @@ almost every neuron already has files. It is the only record of where a run got 
 usable source was available, the image there is spurious and is removed — that is the only
 thing that cleans up the ~4,660 wrong-template BANC images of IMG-3. With **no** usable
 source nothing is deleted, because absent input is not evidence (upstream mesh coverage is
-94.4%/68.8%). Beyond the three products it writes, only `volume.obj` is swept;
-`volume.wlz` and thumbnails are left for the jobs that own them.
+94.4%/68.8%). Beyond the three products it writes it also deletes `volume.obj` and `volume.dps.pkl` —
+the latter because NBLAST only refreshes its combined cache when a neuron's dotprops have
+changed, so a stale one would freeze the old shape there. `volume.wlz` and thumbnails are
+left for the jobs that own them.
 
 `--region vnc` does the VNC half. `--limit N` takes a test batch and logs exactly which
 neurons; `--archive DIR` keeps the pre-replacement images so

@@ -28,7 +28,8 @@ ALL = ('swc', 'obj', 'nrrd')
 #: What VFB actually serves per neuron, confirmed live 2026-08-26. Only the first three
 #: are written by this loader; the rest belong to other jobs.
 SERVED = ('volume.swc', 'volume.nrrd', 'volume_man.obj',
-          'volume.obj', 'volume.wlz', 'thumbnail.png', 'thumbnailT.png')
+          'volume.obj', 'volume.wlz', 'volume.dps.pkl',
+          'thumbnail.png', 'thumbnailT.png')
 
 
 def plant(folder, thumbnail=True, volumes=ALL, extras=True):
@@ -38,7 +39,7 @@ def plant(folder, thumbnail=True, volumes=ALL, extras=True):
         with open(os.path.join(folder, PRODUCTS[k]), 'w') as fh:
             fh.write(f'OLD v626 {k}')
     if extras:
-        for n in ('volume.obj', 'volume.wlz'):
+        for n in ('volume.obj', 'volume.wlz', 'volume.dps.pkl'):
             with open(os.path.join(folder, n), 'w') as fh:
                 fh.write('OLD ' + n)
     if thumbnail:
@@ -88,16 +89,18 @@ def test_swap_replaces_three_products_and_deletes_only_volume_obj():
         assert read(d, 'swc') == 'OLD v626 swc'
         wrote, removed = out.swap(build(out, ALL))
         assert wrote == sorted(PRODUCTS[k] for k in ALL)
-        assert removed == ['volume.obj'], removed
+        assert removed == ['volume.dps.pkl', 'volume.obj'], removed
         assert read(d, 'swc') == 'NEW swc'
         for n in ('volume.wlz', 'thumbnail.png', 'thumbnailT.png'):
             assert n in names(d), n + ' must NOT be swept'
 
 
-def test_sweep_list_is_exactly_volume_obj():
-    """Pinned because an earlier version globbed volume*/thumbnail* and removed five files
-    per neuron, including volume.wlz, which nothing in this repo regenerates."""
-    assert SWEEP_AFTER_SWAP == ('volume.obj',)
+def test_sweep_list_is_exactly_volume_obj_and_dps():
+    """Pinned in both directions. An earlier version globbed volume*/thumbnail* and removed
+    8 files per neuron including volume.wlz, which nothing here regenerates. A later one
+    swept only volume.obj and left volume.dps.pkl stale — which NBLAST then reads as
+    unchanged, so its combined cache keeps the old shape forever."""
+    assert SWEEP_AFTER_SWAP == ('volume.obj', 'volume.dps.pkl')
 
 
 def test_swap_never_leaves_a_served_file_missing():
@@ -121,7 +124,7 @@ def test_swap_sweeps_a_product_dropped_from_products():
         plant(d, thumbnail=False)
         out = OutputSet(d, ('swc', 'nrrd'))
         _, removed = out.swap(build(out, ('swc', 'nrrd')))
-        assert removed == ['volume.obj', 'volume_man.obj'], removed
+        assert removed == ['volume.dps.pkl', 'volume.obj', 'volume_man.obj'], removed
         assert 'volume.wlz' in names(d), 'still not ours to delete'
 
 

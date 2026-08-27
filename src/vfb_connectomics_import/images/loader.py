@@ -46,8 +46,11 @@ There are exactly two, both in `decide()`:
   source was available. That is a positive finding, not a failure: the image sitting there
   is spurious and is removed. This is the only thing that cleans up the ~4,660
   wrong-template BANC images of docs/ISSUES.md IMG-3. `--no-delete-spurious` disables it.
-* Files left over from the previous alignment are swept *after* a successful swap — stale
-  `thumbnail*`, and any product no longer in `--products`.
+* Files left over from the previous alignment are swept *after* a successful swap:
+  `volume.obj`, `volume.dps.pkl`, and any product no longer in `--products`. The dps is a
+  navis Dotprops pickle feeding NBLAST, and must go — NBLAST only re-adds a neuron to its
+  combined cache when the per-folder dps has *changed*, so a stale one keeps the old shape
+  in that cache indefinitely. `volume.wlz` and `thumbnail*` are deliberately left.
 
 If there was **no usable source at all**, nothing is deleted. Upstream mesh coverage is
 only 94.4%/68.8%, so absent input must never destroy a good image.
@@ -232,7 +235,15 @@ REGIONS = {
 # radius 2V/A is unchanged (BANC 149.6 -> 149.5 nm, maleCNS 147.0 -> 149.3 nm). So do NOT
 # add a normal-offset "re-inflation" to recover the area -- matching area overshoots
 # volume by 10-24% and serves neurites fatter than the reconstruction.
-MESH_DENSITY = 37.0          # faces per um2 of surface area; hemibrain-matched
+# Revised 2026-08-27 from 37 to 100 f/um2 after reviewing live output: at 37 the thinnest
+# twigs visibly broke up, and that was judged too strong. 100 keeps ~51% of faces (a 1.97x
+# reduction) i.e. "about half the file size", and sits at roughly FlyWire's lod=2 density
+# (104). The 37 figure was hemibrain-matched and remains the most aggressive defensible
+# target on the geometry (docs/ISSUES.md IMG-1) — this is a deliberate trade of file size
+# for twig fidelity, not a correction. Source density is ~197 f/um2, confirmed two ways:
+# measured directly in IMG-1 (199-220), and back-computed from the 18.8% of faces kept at
+# 37 on live output.
+MESH_DENSITY = 100.0         # faces per um2 of surface area
 MESH_BUDGET_MB = 4.0         # leave a mesh alone if it is already this small on the wire
 OBJ_DP = 3                   # 1 nm quantisation; worst vertex moves 0.86 nm (IMG-1)
 
@@ -957,8 +968,9 @@ def parse_args(argv=None):
                     help='mesh equivalent of --min-nodes (default 100)')
     ap.add_argument('--mesh-density', type=float, default=MESH_DENSITY,
                     help='decimate the OBJ to this many faces per um2 of surface area '
-                         '(default 37, the hemibrain density that displays acceptably). '
-                         '0 disables decimation.')
+                         '(default 100, ~2x reduction on BANC. 37 is the hemibrain-matched '
+                         'value — ~5.3x — but breaks up the thinnest twigs). 0 disables '
+                         'decimation.')
     ap.add_argument('--mesh-budget-mb', type=float, default=MESH_BUDGET_MB,
                     help='leave a mesh undecimated if its estimated gzipped size is '
                          'already under this (default 4 MB)')

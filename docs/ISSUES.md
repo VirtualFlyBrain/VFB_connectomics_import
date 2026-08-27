@@ -98,6 +98,13 @@ Source density across every dataset, `volume_man.obj` on JRC2018Unisex:
 So the target is not a guess: **decimate to hemibrain's 37 f/µm² (≈250 nm edges)**. The
 factor falls out of the source mesh, and hemibrain is left untouched by construction.
 
+**Revised 2026-08-27 to 100 f/µm².** 37 was run in production (build 19, five meshes) and
+reviewed against the undecimated originals: the geometry held at whole-neuron zoom but the
+thinnest twigs visibly broke up, and that was judged too strong. 100 f/µm² keeps ~51% of
+faces — a **1.97x** reduction rather than 5.3x — and sits at roughly FlyWire's `lod=2`
+density. This is a deliberate trade of file size for twig fidelity; everything below about
+why 37 is defensible on the geometry still stands, and `--mesh-density` takes either.
+
 ### Why the earlier "decimation is impossible" verdict was wrong
 
 Recorded here because the mistake is easy to repeat. The 2026-08-24 investigation concluded
@@ -148,6 +155,37 @@ indistinguishable from the source and matches hemibrain's faceted look. Only bel
 fields do the thinnest twigs go chunky and occasionally bead, which is the trade hemibrain
 already ships. 15 f/µm² was also tested and is too far: 4.2% of area >250 nm away, thin
 processes shred.
+
+### Confirmed on live data, 2026-08-27
+
+Run in production for the first time on 100 BANC brain neurons
+([`images/loader.py`](../src/vfb_connectomics_import/images/loader.py), Jenkins
+`load-banc-neurons` build 19). Five meshes exceeded the 4 MB wire budget and were
+decimated:
+
+| source faces | served faces | reduction |
+|---|---|---|
+| 452,084 | 87,996 | 5.14x |
+| 467,880 | 88,526 | 5.29x |
+| 1,199,616 | 208,358 | 5.76x |
+| 511,376 | 101,595 | 5.03x |
+| 882,356 | 173,677 | 5.08x |
+
+**5.03–5.76x, against the 5.4–5.9x predicted from source density alone** (BANC 199–220
+f/µm² → 37). The prediction was made from surface-area measurements; these come from face
+counts on live output. Two independent routes to the same number.
+
+Visual check against the undecimated originals on the same page (old-vs-new comparison via
+[`images/compare.py`](../src/vfb_connectomics_import/images/compare.py)): indistinguishable
+at whole-neuron zoom, with **fine detail breaking up at the thinnest twigs** — exactly the
+trade-off predicted above, and the one hemibrain already ships. Judged acceptable.
+
+Only 5 of 79 written meshes were decimated at all; the rest were already under the budget.
+So the reduction applies to the tail that IMG-1 is actually about, not to typical neurons.
+
+**Still open for the other connectomes.** BANC is done; maleCNS, OpticLobe, FlyWire and
+hemibrain still serve at source density and need the same treatment — see the density table
+above for their factors.
 
 ### What does work: lossless mitigation, ~5× total
 
