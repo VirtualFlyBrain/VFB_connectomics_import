@@ -1091,8 +1091,13 @@ def neuron_line(rec, write_root):
     if rec['removed']:
         bits.append(f'-{len(rec["removed"])}')
     if rec['nodes'] or rec['faces']:
-        bits.append(f'{rec["nodes"]}n/{rec["faces"]}f')
-    detail = (' '.join(bits) or rec['note'])[:34]
+        faces = f'{rec["faces"]}f'
+        obj = rec.get('obj_faces')
+        if obj is not None and obj < rec['faces']:
+            # decimated: show both, so the log alone answers "was this reduced?"
+            faces = f'{rec["faces"]}->{obj}f'
+        bits.append(f'{rec["nodes"]}n/{faces}')
+    detail = (' '.join(bits) or rec['note'])[:40]
     return (f'  {rec["status"]:16s} {rec["root"]:20s} {rec["region"]:5s} '
             f'{rec["seconds"]:5.1f}s  {detail:34s} '
             f'{to_url(rec["folder"], write_root)}')
@@ -1124,6 +1129,15 @@ def summarise(recs, elapsed, workers, report_path=None):
     if len(wrote):
         print(f'\n  wrote: nodes median {wrote.nodes.median():,.0f}  '
               f'faces median {wrote.faces.median():,.0f}')
+    if 'obj_faces' in df:
+        dec = df[df.obj_faces.notna() & (df.obj_faces < df.faces)]
+        n_obj = int(df.obj_faces.notna().sum())
+        print(f'\n  OBJ decimation: {len(dec):,} of {n_obj:,} written meshes reduced '
+              f'(the rest were under the {MESH_BUDGET_MB} MB wire budget)')
+        if len(dec):
+            print(f'    median {dec.faces.median():,.0f} -> {dec.obj_faces.median():,.0f} '
+                  f'faces  ({100 * (1 - dec.obj_faces.sum() / dec.faces.sum()):.0f}% of '
+                  f'faces removed overall)')
     errs = df[df.status == 'error']
     if len(errs):
         print(f'\n  {len(errs):,} error(s) — these are RETRIED on the next run '
