@@ -17,10 +17,9 @@ dynamic = ["dependencies"]
 images = [
     "navis", "flybrains>=0.6.3", "trimesh", "shapely", "scipy", "numpy",
     "cloud-volume", "skeletor", "pynrrd", "plotly", "certifi",
-    # Unconditional pin, not a marker — see the note in requirements.txt. 0.2.0 is
-    # 3.10-only in its code despite claiming 3.9 support, and markers did not hold on the
-    # Jenkins node.
-    "fast-simplification<0.2",
+    # Exact pin — see the note in requirements.txt. 0.1.13 and 0.2.0 both claim 3.9
+    # support but ship no cp39 wheel and have 3.10-only source.
+    "fast-simplification==0.1.12",
     "pandas",
 ]
 
