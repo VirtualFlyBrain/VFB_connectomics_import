@@ -51,6 +51,18 @@ TEMPLATE = {'brain': 'JRC2018U', 'vnc': 'JRCVNC2018U'}
 DISPLAY_FACES = 0
 
 
+def hush_navis():
+    """Silence navis' INFO chatter — must run AFTER `import navis`.
+
+    Setting the level at module import does nothing: navis installs its own handler at
+    INFO when it is imported, which happens later (lazily, inside functions). Without this
+    every plot3d emits "Use the `.show()` method to plot the figure.", one line per neuron.
+    """
+    import logging
+    for name in ('navis', 'navis.plotting', 'pygeos', 'trimesh'):
+        logging.getLogger(name).setLevel(logging.ERROR)
+
+
 def load_layer(path, kind, name, navis, budget):
     """A navis object for one archived file, or None if absent/unreadable."""
     if not os.path.exists(path):
@@ -67,9 +79,10 @@ def load_layer(path, kind, name, navis, budget):
             raw = len(tm.faces)
             tm = decimate_for_display(tm, budget)
             if len(tm.faces) == raw and raw > HEAVY_FACES:
-                print(f'      note: {name} has {raw:,} faces — the page will be slow to '
-                      f'open. --display-faces N decimates it for display only.',
-                      flush=True)
+                # collected, not printed — printing here puts the note above the summary
+                # line of the neuron it describes, which reads as belonging to the previous
+                # one. main() prints it after.
+                HEAVY.append(f'{name} has {raw:,} faces')
             n = navis.MeshNeuron(tm, units='microns')
         n.id = n.name = name
         return n
@@ -80,6 +93,9 @@ def load_layer(path, kind, name, navis, budget):
 #: A single plotly mesh3d beyond roughly this many faces makes a page slow to open.
 #: We warn rather than shrink, so the page keeps showing the served geometry.
 HEAVY_FACES = 500_000
+
+#: heavy-mesh notes for the neuron currently being rendered; drained by main()
+HEAVY = []
 
 
 def decimate_for_display(tm, budget):
@@ -257,6 +273,7 @@ def main(argv=None):
     import navis
     import flybrains
     navis.set_pbars(hide=True)
+    hush_navis()
 
     out_dir = args.out or os.path.join(args.archive, 'html')
     os.makedirs(out_dir, exist_ok=True)
@@ -267,11 +284,15 @@ def main(argv=None):
 
     rows = []
     for i, d in enumerate(dirs, 1):
+        HEAVY.clear()
         path, meta, present = render_one(d, out_dir, navis, flybrains, budget)
         miss = [k for k, v in present.items() if not v]
         print(f'  [{i}/{len(dirs)}] {meta.get("root")} {meta.get("region")} '
               f'{meta.get("status")}' + (f'  MISSING: {", ".join(miss)}' if miss else ''),
               flush=True)
+        for note in HEAVY:
+            print(f'        note: {note} — slow to open; --display-faces N reduces it '
+                  f'for display only.', flush=True)
         rows.append((path, meta, present))
 
     js = write_plotlyjs(out_dir)

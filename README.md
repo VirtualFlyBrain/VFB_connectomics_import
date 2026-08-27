@@ -3,22 +3,67 @@ A project to produce RDF/OWL representations of connectomics data for import to 
 
 ## 📊 Import status dashboard
 
-**[Open the live dashboard →](https://virtualflybrain.github.io/vfb_connectomics_import/)**
+**[Open the live dashboard →](https://virtualflybrain.github.io/VFB_connectomics_import/)**
 
 A colour-coded, always-current matrix of every connectome import — stage, version,
 and whether it's live in the release. Rebuilt automatically (nightly + on push).
 How it works and how to extend it: [`dashboard/`](dashboard/).
 
+## 🪰 BANC images (Bates2026 / v888)
+
+Writes `volume.swc`, `volume_man.obj` and `volume.nrrd` onto the VFB templates for the
+146,511 BANC v888 neurons. Runs on Jenkins as `load-banc-neurons`; the code is
+[`src/vfb_connectomics_import/images/`](src/vfb_connectomics_import/images/).
+
+```bash
+export BANC_FIELD_DIR=/nas/.../banc_transform_fields   # the baked transforms, 543 MB
+export KB_USER=... KB_PASSWORD=...                     # KB only; v888 is not in pdb
+pip install -e ".[images]"
+python -m vfb_connectomics_import.images.loader --region brain --ledger run.jsonl
+```
+
+**Two things you must set**: `$BANC_FIELD_DIR` (the pre-baked BANC→JRC2018F fields — the
+preflight prints which of three sources it resolved and fails in seconds if wrong) and KB
+credentials. `$FLYBRAINS_DATA` holds the JRC2018F→JRC2018U H5 tail hop and is fetched
+automatically if absent. Nothing per-neuron touches an authenticated service — the geometry
+is anonymous HTTPS from BANC's public bucket.
+
+**It replaces in place, one neuron at a time.** Almost every neuron already has a v626-era
+image. The complete new set is built to `volume.partial.*` and swapped in with `os.replace`,
+so a served file goes straight from old to new and is never briefly absent. On any failure
+the partials are discarded and the old image keeps serving. The job can therefore be stopped
+at any moment without leaving the site broken — which is why its speed does not much matter.
+
+**`--ledger` is required**, not optional: file existence cannot indicate progress when
+almost every neuron already has files. It is the only record of where a run got to, and
+`error` is never recorded as terminal, so failures retry themselves next build.
+
+**It deletes images too.** When a rebuild finds no depictable material in a region *and* a
+usable source was available, the image there is spurious and is removed — that is the only
+thing that cleans up the ~4,660 wrong-template BANC images of IMG-3. With **no** usable
+source nothing is deleted, because absent input is not evidence (upstream mesh coverage is
+94.4%/68.8%). Beyond the three products it writes, only `volume.obj` is swept;
+`volume.wlz` and thumbnails are left for the jobs that own them.
+
+`--region vnc` does the VNC half. `--limit N` takes a test batch and logs exactly which
+neurons; `--archive DIR` keeps the pre-replacement images so
+`python -m vfb_connectomics_import.images.compare` can render old-vs-new 3D pages.
+Tests: `python tests/test_images.py` (25, no network or navis needed).
+
+Detail lives in [`docs/TRANSFORMS.md`](docs/TRANSFORMS.md) (transform paths, staging, the
+`use_https` trap) and [`docs/ISSUES.md`](docs/ISSUES.md) (IMG-1 mesh size, IMG-3 spurious
+images, IMG-4 the missing-image gap).
+
 ## 🧭 Transforms
 
-**[`TRANSFORMS.md`](TRANSFORMS.md)** — how BANC and maleCNS reach the JRC2018 templates: the
+**[`TRANSFORMS.md`](docs/TRANSFORMS.md)** — how BANC and maleCNS reach the JRC2018 templates: the
 exact paths, why the BANC legs are pre-baked and the JRC legs are not, the baked-field format
 and its accuracy, and the deployment shape. Read it before changing any `xform_brain` call —
 `via=`/`avoid=` in particular behave in non-obvious ways.
 
 ## 🐛 Known issues / work queue
 
-**[`ISSUES.md`](ISSUES.md)** — cross-cutting defects in the loaded data and the import code,
+**[`ISSUES.md`](docs/ISSUES.md)** — cross-cutting defects in the loaded data and the import code,
 with evidence and fix direction. The dashboard tracks *stage progress* ("has n2n been
 built?"); this tracks *correctness* ("is what we built right?"). Currently topped by
 **IMG-1**: served OBJ meshes reach 626 MB for a single neuron and take minutes to load,
@@ -26,7 +71,7 @@ across every EM connectome.
 
 ## 🔻 Before changing how meshes are written
 
-Read **[`DECIMATION.md`](DECIMATION.md)**. It is the working spec for IMG-1 — *measured and
+Read **[`DECIMATION.md`](docs/DECIMATION.md)**. It is the working spec for IMG-1 — *measured and
 settled, implemented for BANC only, never yet run*. The finding it records is not obvious and
 was got wrong once in the opposite direction: hemibrain APL and maleCNS APL are the same cell
 with the **same surface area** (62,244 vs 60,334 µm²) and a **5.4× difference in triangle
@@ -37,7 +82,7 @@ that manufactures damage which is not there.
 
 ## ⚠️ Before migrating a connectome to a new release
 
-Read **[`VERSIONING.md`](VERSIONING.md)**. It holds the neuron-identity and curation rules
+Read **[`VERSIONING.md`](docs/VERSIONING.md)**. It holds the neuron-identity and curation rules
 that the [canonical VFB versioning docs](https://virtualflybrain.org/docs/data/em/versioning/)
 do not cover — why a root ID is a version rather than an identity, why curation is
 re-derived each release instead of carried across a mapping, when an existing image can and
@@ -46,7 +91,7 @@ from the code, and getting it wrong silently produces wrong data.
 
 ## 🧭 Before touching a template transform
 
-Read **[`TRANSFORMS.md`](TRANSFORMS.md)**. Two things in it are not deducible from the code
+Read **[`TRANSFORMS.md`](docs/TRANSFORMS.md)**. Two things in it are not deducible from the code
 and cost real time to re-derive: navis's `via=`/`avoid=` kwargs **abandon the weighted path
 search entirely**, so the `via=` calls in this repo currently resolve to 16- and 19-hop
 routes through the wrong templates; and the way to make image generation fast is not to
@@ -57,7 +102,7 @@ what makes the neck-connective cut safe.
 
 ## ✅ Before trusting a transformed image
 
-Read **[`VALIDATION.md`](VALIDATION.md)**. It is a *plan, not a result* — nothing in it has
+Read **[`VALIDATION.md`](docs/VALIDATION.md)**. It is a *plan, not a result* — nothing in it has
 been run yet. It records where the reference neuropil ROIs live (VFB already serves 46
 painted domains on JRC2018Unisex and 21 on JRC2018UnisexVNC, no auth), and the trap that
 makes the obvious test misleading: **BANC's own neuropil ROIs are the ITO/COURT/MANC atlases

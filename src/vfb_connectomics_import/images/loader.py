@@ -142,6 +142,18 @@ VFB_URL_PREFIXES = ('http://www.virtualflybrain.org/data/',
                     'https://www.virtualflybrain.org/data/')
 
 
+def hush_navis():
+    """Silence navis' INFO chatter — must run AFTER `import navis`.
+
+    Setting the level at module import does nothing: navis installs its own handler at
+    INFO when it is imported, which happens later (lazily, inside functions). Without this
+    every plot3d emits "Use the `.show()` method to plot the figure.", one line per neuron.
+    """
+    import logging
+    for name in ('navis', 'navis.plotting', 'pygeos', 'trimesh'):
+        logging.getLogger(name).setLevel(logging.ERROR)
+
+
 # ------------------------------------------------------------------------------- regions
 @dataclass
 class Region:
@@ -270,6 +282,7 @@ def worker_init(settings):
 
     flybrains.register_transforms()
     navis.set_pbars(hide=True)
+    hush_navis()
     banc_baked.register(field_dir=settings.field_dir, mmap=settings.mmap,
                         verbose=False)                     # raises if absent
 
@@ -1029,6 +1042,7 @@ def preflight(args, regions):
     import navis
     from vfb_connectomics_import.images import transforms as banc_baked
     navis.set_pbars(hide=True)
+    hush_navis()
 
     # 1. Cheapest check first. Locating our own fields is an instant stat; the H5 step
     #    below may download 717 MB. Checking in the other order meant a misconfigured
