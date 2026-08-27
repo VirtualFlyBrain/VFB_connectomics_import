@@ -11,7 +11,13 @@ certifi
 flybrains>=0.6.3      # BANC support arrived in 0.6.x; 0.3.0 has none
 navis                 # transform registry + xform_brain
 trimesh               # mesh IO and plane slicing
-fast-simplification   # quadric decimation of the served OBJs (ISSUES.md IMG-1)
+# Quadric decimation of the served OBJs (docs/ISSUES.md IMG-1). MUST be version-marked:
+# 0.2.0's metadata says requires-python >=3.9 but its code uses PEP 604 unions
+# (`float | None` in simplify.py), which is a SyntaxError-at-import on 3.9. Every 0.1.x is
+# clean. pyproject.toml reads this file as its base dependencies, so an unpinned entry here
+# overrides the marker in the [images] extra — pin it in both places or neither works.
+fast-simplification<0.2 ; python_version < "3.10"
+fast-simplification     ; python_version >= "3.10"
 shapely               # required by trimesh.slice_plane, even with cap=False
 scipy                 # map_coordinates for the baked-field lookup
 cloud-volume          # BANC precomputed mesh fetch

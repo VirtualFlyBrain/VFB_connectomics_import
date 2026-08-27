@@ -19,21 +19,32 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
 from vfb_connectomics_import.images.io import (
-    PRODUCTS, TERMINAL, Ledger, OutputSet, partial_path)
+    PRODUCTS, SWEEP_AFTER_SWAP, TERMINAL, Ledger, OutputSet, partial_path)
 
 ALL = ('swc', 'obj', 'nrrd')
 
 
 # --------------------------------------------------------------------------- helpers
-def plant(folder, thumbnail=True, volumes=ALL):
+#: What VFB actually serves per neuron, confirmed live 2026-08-26. Only the first three
+#: are written by this loader; the rest belong to other jobs.
+SERVED = ('volume.swc', 'volume.nrrd', 'volume_man.obj',
+          'volume.obj', 'volume.wlz', 'thumbnail.png', 'thumbnailT.png')
+
+
+def plant(folder, thumbnail=True, volumes=ALL, extras=True):
     """An existing v626-era image, as the loader will find on almost every neuron."""
     os.makedirs(folder, exist_ok=True)
     for k in volumes:
         with open(os.path.join(folder, PRODUCTS[k]), 'w') as fh:
             fh.write(f'OLD v626 {k}')
+    if extras:
+        for n in ('volume.obj', 'volume.wlz'):
+            with open(os.path.join(folder, n), 'w') as fh:
+                fh.write('OLD ' + n)
     if thumbnail:
-        with open(os.path.join(folder, 'thumbnail.png'), 'w') as fh:
-            fh.write('OLD THUMB')
+        for n in ('thumbnail.png', 'thumbnailT.png'):
+            with open(os.path.join(folder, n), 'w') as fh:
+                fh.write('OLD THUMB')
 
 
 def names(folder):
@@ -66,16 +77,27 @@ def test_partial_suffix_precedes_the_extension():
 
 
 # ------------------------------------------------------------------------ the swap is safe
-def test_swap_replaces_content_and_clears_thumbnail():
+def test_swap_replaces_three_products_and_deletes_only_volume_obj():
+    """The agreed contract (2026-08-26): replace swc / nrrd / volume_man.obj, additionally
+    delete volume.obj, and LEAVE volume.wlz and the thumbnails. Those go briefly out of
+    sync with the new alignment, which is accepted -- other jobs refresh them, and
+    deleting products nothing here regenerates would be worse."""
     with tempfile.TemporaryDirectory() as d:
         plant(d)
         out = OutputSet(d, ALL)
         assert read(d, 'swc') == 'OLD v626 swc'
         wrote, removed = out.swap(build(out, ALL))
         assert wrote == sorted(PRODUCTS[k] for k in ALL)
-        assert removed == ['thumbnail.png'], 'a stale thumbnail depicts the old alignment'
+        assert removed == ['volume.obj'], removed
         assert read(d, 'swc') == 'NEW swc'
-        assert 'thumbnail.png' not in names(d)
+        for n in ('volume.wlz', 'thumbnail.png', 'thumbnailT.png'):
+            assert n in names(d), n + ' must NOT be swept'
+
+
+def test_sweep_list_is_exactly_volume_obj():
+    """Pinned because an earlier version globbed volume*/thumbnail* and removed five files
+    per neuron, including volume.wlz, which nothing in this repo regenerates."""
+    assert SWEEP_AFTER_SWAP == ('volume.obj',)
 
 
 def test_swap_never_leaves_a_served_file_missing():
@@ -99,8 +121,8 @@ def test_swap_sweeps_a_product_dropped_from_products():
         plant(d, thumbnail=False)
         out = OutputSet(d, ('swc', 'nrrd'))
         _, removed = out.swap(build(out, ('swc', 'nrrd')))
-        assert removed == ['volume_man.obj']
-        assert names(d) == ['volume.nrrd', 'volume.swc']
+        assert removed == ['volume.obj', 'volume_man.obj'], removed
+        assert 'volume.wlz' in names(d), 'still not ours to delete'
 
 
 # ------------------------------------------------------------- existing-image bookkeeping
@@ -138,8 +160,8 @@ def test_remove_all_clears_volumes_and_thumbnails():
     with tempfile.TemporaryDirectory() as d:
         plant(d)
         removed = OutputSet(d, ALL).remove_all()
-        assert removed == ['thumbnail.png', 'volume.nrrd', 'volume.swc', 'volume_man.obj']
-        assert names(d) == []
+        assert sorted(removed) == sorted(SERVED), removed
+        assert names(d) == [], 'a spurious image must not be left half-served'
 
 
 # --------------------------------------------------------------------- the deletion policy

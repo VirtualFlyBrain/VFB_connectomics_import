@@ -26,10 +26,21 @@ import shutil
 #: product key -> served filename. The keys are what `--products` accepts.
 PRODUCTS = {'swc': 'volume.swc', 'obj': 'volume_man.obj', 'nrrd': 'volume.nrrd'}
 
-#: Globs for everything this loader considers "the served image". Thumbnails are included
-#: because a thumbnail depicts the OLD alignment: leaving one beside a replaced volume is a
-#: silently stale image.
+#: Globs for everything VFB serves per neuron. Used to decide whether an image exists at
+#: all, and to clear one that turns out to be spurious — NOT to decide what a successful
+#: replacement sweeps away (see SWEEP_AFTER_SWAP).
+#: Confirmed served 2026-08-26: volume.swc, volume.nrrd, volume_man.obj, volume.obj,
+#: volume.wlz, thumbnail.png, thumbnailT.png.
 SERVED_GLOBS = ('volume*', 'thumbnail*')
+
+#: Extra files removed after a successful swap, beyond the products this run wrote.
+#: Decided 2026-08-26: replace the three we generate, additionally delete `volume.obj`,
+#: and **leave everything else** — `volume.wlz`, `thumbnail*` and anything new. Those will
+#: be briefly out of sync with the new alignment, which is accepted: other jobs refresh
+#: them in time, and the alternative (deleting products nothing here regenerates) is worse.
+#: An earlier version swept `volume*` + `thumbnail*` wholesale, which removed 5 files per
+#: neuron including `volume.wlz`.
+SWEEP_AFTER_SWAP = ('volume.obj',)
 
 #: Statuses meaning "this neuron has been dealt with; do not redo it on resume".
 #: 'error' is deliberately absent — errors must be retried.
@@ -94,12 +105,23 @@ class OutputSet:
 
         Returns (wrote, removed) as basename lists. `os.replace` overwrites, so there is
         no delete-then-write step and no window in which a served file is missing.
+
+        The sweep is **narrow and explicit**: `SWEEP_AFTER_SWAP`, plus any product this
+        loader manages that this run did not write (so `--products swc,nrrd` does not
+        leave last alignment's `volume_man.obj` behind). Everything else VFB serves is
+        left untouched — see the SWEEP_AFTER_SWAP note.
         """
         wrote = []
         for tmp, final in built.items():
             os.replace(tmp, final)
             wrote.append(os.path.basename(final))
-        removed = self._sweep(keep=set(built.values()))
+
+        just_wrote = {os.path.basename(p) for p in built.values()}
+        targets = set(SWEEP_AFTER_SWAP) | set(PRODUCTS.values())
+        removed = []
+        for name in sorted(targets - just_wrote):
+            if _unlink(os.path.join(self.folder, name)):
+                removed.append(name)
         return sorted(wrote), removed
 
     def archive_to(self, dest):

@@ -133,7 +133,7 @@ class BakedField:
 
     def __repr__(self):
         return (f'<BakedField {os.path.basename(self.path)} -> {self.target}, '
-                f'grid {tuple(self.shape)} @ {self.step[0]:.0f} nm>')
+                f'grid {tuple(int(n) for n in self.shape)} @ {self.step[0]:.0f} nm>')   # int(): numpy 2 reprs bare scalars as np.int64(445)
 
     def __call__(self, pts):
         pts = np.asarray(pts, float)
