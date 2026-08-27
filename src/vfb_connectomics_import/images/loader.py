@@ -544,14 +544,27 @@ def to_tree_neuron(arr, name):
         id=name, name=name, units='microns')
 
 
-def clip_into(obj, region):
-    """Clamp coordinates into the voxel grid so voxelize can never see an out-of-range
+def clip_swc(arr, region):
+    """Clamp an SWC array into the voxel grid. Done on the ARRAY, before the TreeNeuron is
+    built, because `TreeNeuron.vertices` is a read-only property — assigning to it raises
+    `AttributeError: can't set attribute`. That bit on the first neuron with a skeleton but
+    no mesh (339 nodes / 0 faces), where the NRRD falls back to the skeleton: `hasattr(obj,
+    'vertices')` is True for a TreeNeuron too, so the old shared helper looked safe and was
+    not. MeshNeuron has `.vertices` writable and no `.nodes`; TreeNeuron has both, read-only.
+    """
+    bb = region.bb()
+    out = np.asarray(arr, float).copy()
+    out[:, 2:5] = np.clip(out[:, 2:5], bb[:, 0], bb[:, 1])
+    return out
+
+
+def clip_mesh(mesh, region):
+    """Clamp mesh vertices into the voxel grid so voxelize can never see an out-of-range
     point. The trim uses the same bounds, so this only ever moves a point by
     floating-point noise."""
     bb = region.bb()
-    if hasattr(obj, 'vertices'):
-        obj.vertices = np.clip(np.asarray(obj.vertices), bb[:, 0], bb[:, 1])
-    return obj
+    mesh.vertices = np.clip(np.asarray(mesh.vertices), bb[:, 0], bb[:, 1])
+    return mesh
 
 
 def write_nrrd(obj, region, path):
@@ -630,7 +643,7 @@ def build_products(root, halves, region, out, st, rec):
         built[tmp] = out.paths['swc']
 
     if halves.mesh is not None:
-        mesh_neuron = as_mesh_neuron(clip_into(halves.mesh, region), root)
+        mesh_neuron = as_mesh_neuron(clip_mesh(halves.mesh, region), root)
         if 'obj' in out.products:
             dec, note = decimate_mesh(halves.mesh, st.mesh_density, st.mesh_budget_mb)
             rec['obj_faces'], rec['obj_note'] = len(dec.faces), note
@@ -644,7 +657,7 @@ def build_products(root, halves, region, out, st, rec):
         # order as the maleCNS loader this replaces.
         src = mesh_neuron
         if src is None and halves.swc is not None:
-            src = clip_into(to_tree_neuron(halves.swc, str(root)), region)
+            src = to_tree_neuron(clip_swc(halves.swc, region), str(root))
         if src is not None:
             tmp = partial_path(out.paths['nrrd'])
             write_nrrd(src, region, tmp)
