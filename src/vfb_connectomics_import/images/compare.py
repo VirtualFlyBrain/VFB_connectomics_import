@@ -7,9 +7,10 @@
 Writes one interactive plotly HTML per neuron plus an `index.html` table, into the Jenkins
 workspace — never into a live image folder. Each page shows, in the same template space:
 
-    template surface   grey, transparent
-    OLD skeleton       blue          OLD mesh   pale blue
-    NEW skeleton       red           NEW mesh   orange
+    template surface, plus OLD skeleton + OLD mesh and NEW skeleton + NEW mesh.
+
+Colours come from plotly's own legend — the page does not restate them, because a
+hardcoded swatch drifts from whatever navis/plotly actually renders.
 
 **A missing product is stated, not implied.** Every page carries a four-row table saying
 present/MISSING for old-skel, old-mesh, new-skel, new-mesh, with the loader's own status and
@@ -43,7 +44,11 @@ LAYERS = (
     ('new mesh', 'new', 'volume_man.obj', (1.00, 0.60, 0.10)),
 )
 TEMPLATE = {'brain': 'JRC2018U', 'vnc': 'JRCVNC2018U'}
-DISPLAY_FACES = 60_000        # per mesh, for the browser; not the served resolution
+#: 0 = show the meshes exactly as served, which is the point of this page. The loader
+#: already bounds the NEW mesh (37 f/um2 above a 4 MB wire budget), so it needs no help.
+#: The OLD v626 meshes are unbounded though — IMG-1 measured mean 9.74 MB, max 44.63 MB —
+#: so a decimating escape hatch stays available for a page a browser will not open.
+DISPLAY_FACES = 0
 
 
 def load_layer(path, kind, name, navis, budget):
@@ -59,7 +64,12 @@ def load_layer(path, kind, name, navis, budget):
             tm = trimesh.load(path, process=False, force='mesh')
             if not len(getattr(tm, 'faces', [])):
                 return None
+            raw = len(tm.faces)
             tm = decimate_for_display(tm, budget)
+            if len(tm.faces) == raw and raw > HEAVY_FACES:
+                print(f'      note: {name} has {raw:,} faces — the page will be slow to '
+                      f'open. --display-faces N decimates it for display only.',
+                      flush=True)
             n = navis.MeshNeuron(tm, units='microns')
         n.id = n.name = name
         return n
@@ -67,10 +77,15 @@ def load_layer(path, kind, name, navis, budget):
         return None
 
 
+#: A single plotly mesh3d beyond roughly this many faces makes a page slow to open.
+#: We warn rather than shrink, so the page keeps showing the served geometry.
+HEAVY_FACES = 500_000
+
+
 def decimate_for_display(tm, budget):
     """Shrink a mesh so the HTML opens. Display only — never written back."""
     n = len(tm.faces)
-    if n <= budget:
+    if not budget or n <= budget:
         return tm
     try:
         import fast_simplification
@@ -82,6 +97,31 @@ def decimate_for_display(tm, budget):
                               faces=np.asarray(f, int), process=False)
     except Exception:
         return tm
+
+
+def _display_note(budget):
+    if not budget:
+        return 'meshes shown exactly as served'
+    return (f'meshes decimated to {budget:,} faces FOR DISPLAY ONLY on this page — '
+            f'unrelated to the served OBJ reported above')
+
+
+def _obj_line(meta):
+    """What happened to the OBJ we actually served — distinct from the display decimation.
+
+    Without this the page reports the pre-decimation face count next to a note about a
+    60k display budget, which reads as though the served mesh were decimated to 60k. It
+    usually is not decimated at all: most BANC neurons are under the 4 MB wire budget.
+    """
+    n, note = meta.get('obj_faces'), meta.get('obj_note')
+    if n is None:
+        return '<span class="k">not written this run</span>'
+    faces = meta.get('faces') or 0
+    if note and 'budget' in note:
+        return f'{n:,} faces — <b>not decimated</b> ({note})'
+    if faces and n < faces:
+        return f'{faces:,} &rarr; <b>{n:,} faces</b> — decimated ({note})'
+    return f'{n:,} faces ({note})'
 
 
 def status_table(meta, present, budget):
@@ -97,22 +137,16 @@ def status_table(meta, present, budget):
  td {{ padding: 2px 10px 2px 0; }}
  .ok {{ color: #197; }} .miss {{ color: #c33; font-weight: 600; }}
  .k {{ color: #666; }}
- .sw {{ display: inline-block; width: 10px; height: 10px; margin-right: 5px; }}
 </style>
 <div class="hdr">
  <b>{meta.get('root')}</b> · {meta.get('region')} · {TEMPLATE.get(meta.get('region'), '')}
  &nbsp;<span class="k">status</span> <b>{meta.get('status')}</b>
  &nbsp;<span class="k">skeleton source</span> {meta.get('swc_source')}
  &nbsp;<span class="k">nodes/faces</span> {meta.get('nodes')}/{meta.get('faces')}
+ <br><span class="k">served OBJ</span> {_obj_line(meta)}
  <table>{rows}</table>
  <span class="k">{meta.get('note') or ''}</span><br>
- <span class="k">
-  <span class="sw" style="background:rgb(38,89,242)"></span>old skel
-  <span class="sw" style="background:rgb(140,191,255)"></span>old mesh
-  <span class="sw" style="background:rgb(230,26,26)"></span>new skel
-  <span class="sw" style="background:rgb(255,153,26)"></span>new mesh
-  &nbsp;— meshes decimated to {budget:,} faces for display only
- </span>
+ <span class="k">{_display_note(budget)}</span>
 </div>
 """
 
@@ -209,11 +243,16 @@ def main(argv=None):
     ap.add_argument('--out', default=None,
                     help='output directory (default: <archive>/html)')
     ap.add_argument('--display-faces', type=int, default=DISPLAY_FACES,
-                    help=f'decimate each mesh to this many faces for display '
-                         f'(default {DISPLAY_FACES:,}); 0 to keep full resolution')
+                    help='decimate each mesh to this many faces FOR DISPLAY ONLY. '
+                         'Default 0 = show them exactly as served, which is the point of '
+                         'the page. Set e.g. 200000 if an old v626 mesh is too large for '
+                         'the browser to open (IMG-1: up to 44 MB observed).')
     args = ap.parse_args(argv)
 
-    budget = args.display_faces or 10 ** 12
+    # 0 means off, and must stay 0: decimate_for_display and _display_note both
+    # test it directly. An earlier sentinel of 10**12 made the page claim it had
+    # decimated when it had not.
+    budget = max(0, args.display_faces)
 
     import navis
     import flybrains

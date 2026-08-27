@@ -704,7 +704,8 @@ def _done(rec, t0, archive_dir=None):
             with open(os.path.join(d, 'meta.json'), 'w') as fh:
                 json.dump({k: rec.get(k) for k in
                            ('root', 'region', 'status', 'swc_source', 'nodes', 'faces',
-                            'note', 'old_files', 'new_files', 'had_existing', 'seconds')},
+                            'obj_faces', 'obj_note', 'note', 'old_files', 'new_files',
+                            'had_existing', 'seconds')},
                           fh, indent=1)
         except Exception:
             pass
