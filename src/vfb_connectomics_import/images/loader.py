@@ -341,9 +341,13 @@ def fetch_mesh(root):
     """
     import trimesh
     try:
-        m = _cv().mesh.get(int(root))
+        cv = _cv()
+    except ImportError:
+        raise                      # a config problem, not a missing mesh — never swallow
+    try:
+        m = cv.mesh.get(int(root))
     except Exception:
-        return None
+        return None                # genuinely absent upstream; expected, see docstring
     mm = m[int(root)] if isinstance(m, dict) else m
     return trimesh.Trimesh(vertices=np.asarray(mm.vertices, np.float64),
                            faces=np.asarray(mm.faces, np.int64), process=False)
@@ -1026,6 +1030,50 @@ def ensure_h5(regions, download=True):
             raise SystemExit(f'flybrains.{fn}() ran but {path} is still missing')
 
 
+#: (import name, what breaks without it). Checked at preflight because several of these
+#: fail in ways that LOOK like data problems rather than config problems — a missing
+#: cloudvolume makes every mesh fetch return None, which is indistinguishable from
+#: "upstream published no mesh for this neuron", and silently degrades 40% of neurons to
+#: the 125x-coarser published _l2 skeleton. Observed for real on a rebuilt venv.
+REQUIRED = (
+    ('navis', 'transforms and IO'),
+    ('flybrains', 'template registration'),
+    ('trimesh', 'mesh slicing'),
+    ('scipy', 'baked-field interpolation'),
+    ('cloudvolume', 'mesh fetch — without it EVERY neuron reports no mesh'),
+    ('nrrd', 'NRRD output'),
+    ('fast_simplification', 'OBJ decimation — needed above the wire budget'),
+    ('skeletor', 'skeletonising the mesh for the 40.7% with no published _skeleton'),
+)
+
+
+def check_deps():
+    """Fail with a list, not one import error at a time."""
+    import importlib
+    missing = []
+    for mod, why in REQUIRED:
+        try:
+            importlib.import_module(mod)
+        except Exception as e:
+            missing.append(f'  {mod:22s} {why}   [{type(e).__name__}]')
+    if missing:
+        raise SystemExit(
+            'missing python dependencies:\n' + '\n'.join(missing) +
+            '\n\nInstall with:  pip install -e ".[images]"\n'
+            'Do NOT run without these — a missing cloudvolume or skeletor degrades output '
+            'silently rather than failing.')
+    import importlib.metadata as md
+    ver = []
+    for mod, _ in REQUIRED:
+        name = {'cloudvolume': 'cloud-volume', 'nrrd': 'pynrrd',
+                'fast_simplification': 'fast-simplification'}.get(mod, mod)
+        try:
+            ver.append(f'{name} {md.version(name)}')
+        except Exception:
+            ver.append(f'{name} ?')
+    print('deps: ' + ', '.join(ver), flush=True)
+
+
 def preflight(args, regions):
     """Fail in seconds on a misconfigured agent rather than hours in.
 
@@ -1043,6 +1091,7 @@ def preflight(args, regions):
     from vfb_connectomics_import.images import transforms as banc_baked
     navis.set_pbars(hide=True)
     hush_navis()
+    check_deps()
 
     # 1. Cheapest check first. Locating our own fields is an instant stat; the H5 step
     #    below may download 717 MB. Checking in the other order meant a misconfigured
