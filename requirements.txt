@@ -16,8 +16,14 @@ trimesh               # mesh IO and plane slicing
 # (`float | None` in simplify.py), which is a SyntaxError-at-import on 3.9. Every 0.1.x is
 # clean. pyproject.toml reads this file as its base dependencies, so an unpinned entry here
 # overrides the marker in the [images] extra — pin it in both places or neither works.
-fast-simplification<0.2 ; python_version < "3.10"
-fast-simplification     ; python_version >= "3.10"
+# Pinned <0.2 UNCONDITIONALLY, not by marker. 0.2.0's metadata claims
+# requires-python >=3.9 but its code uses PEP 604 unions (`float | None` in simplify.py),
+# an import-time TypeError on 3.9 — and the Jenkins node is 3.9. A
+# `python_version < "3.10"` marker here and in pyproject's [images] extra did NOT prevent
+# pip on that node from installing 0.2.0 (cause never established), so the version range
+# is now unconditional. 0.1.11 works on every interpreter we use and our single
+# simplify(v, f, target_reduction=...) call is unchanged across 0.1.x.
+fast-simplification<0.2
 shapely               # required by trimesh.slice_plane, even with cap=False
 scipy                 # map_coordinates for the baked-field lookup
 cloud-volume          # BANC precomputed mesh fetch
