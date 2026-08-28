@@ -1195,9 +1195,15 @@ def report_progress(i, total, t0, counts):
     el = time.time() - t0
     rate, left = el / i, total - i
     eta = left * rate
+    # Include the weekday once the ETA is more than 12 h out — a bare "02:10" on a
+    # multi-day run is ambiguous, which is the whole point of printing it.
+    fin = time.localtime(time.time() + eta)
+    when = time.strftime('%H:%M' if eta < 12 * 3600 else '%a %H:%M', fin)
+    hrs = eta / 3600
+    left_str = f'{eta / 60:.0f}m' if hrs < 3 else f'{hrs:.1f}h'
     print(f'  [{i:,}/{total:,}  {100.0 * i / total:5.1f}%]  {left:,} left  '
-          f'{rate:.2f} s/neuron  elapsed {el / 60:.1f}m  ETA {eta / 60:.0f}m '
-          f'(~{time.strftime("%H:%M", time.localtime(time.time() + eta))})  '
+          f'{rate:.2f} s/neuron  elapsed {el / 3600:.1f}h  ETA {left_str} '
+          f'(~{when})  '
           + '  '.join(f'{k}={v}' for k, v in sorted(counts.items())), flush=True)
 
 
