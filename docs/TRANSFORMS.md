@@ -35,6 +35,12 @@ needed by *other* datasets removes the only available path here.
 BANC, sending a *male* volume through a *female* CNS into the *female* VNC template. The
 `via` forces male EM -> male VNC template. That existing choice in the loader is correct.
 
+**And once the baked BANC fields are registered, maleCNS *brain* detours through BANC too**
+— it did not before. Measured 2026-08-28; see `ISSUES.md` CODE-1. Any loader for a non-BANC
+source that shares a process with `images/transforms.register()` must assert no `BANC` /
+`BANCum` node in its resolved path, or build the hop list explicitly instead of asking
+`find_bridging_path`.
+
 ---
 
 ## Why the BANC legs are baked and the JRC legs are not

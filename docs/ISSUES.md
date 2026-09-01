@@ -594,6 +594,37 @@ reroutes the path search *onto* them. Measured:
 The maleCNS VNC loader survives only incidentally, because it also excludes
 `JRCVNC2018F`. Always exclude both names.
 
+### Registering the baked BANC fields makes this WORSE — measured 2026-08-28
+
+The row above, "maleCNS brain, no avoid | OK", **is no longer true once
+`images/transforms.register()` has run in the same process.** The baked fields are
+registered at `weight=0.1` so `nx.shortest_path` prefers them for a BANC source — but they
+are ordinary graph edges, so they also make any path *through* BANC cheaper for every other
+dataset:
+
+```
+before register():
+  maleCNS -> JRC2018U     JRCFIB2022Mraw -> JRCFIB2022M -> JRCFIB2022Mum -> JRC2018M -> JRC2018U   correct
+  maleCNS -> JRCVNC2018U  JRCFIB2022Mraw -> JRCFIB2022M -> BANC -> BANCum -> JRCVNC2018F -> ...     the known bug
+
+after register(weight=0.1):
+  maleCNS -> JRC2018U     JRCFIB2022Mraw -> JRCFIB2022M -> BANC -> JRC2018F -> JRC2018U             NOW WRONG TOO
+  maleCNS -> JRCVNC2018U  JRCFIB2022Mraw -> JRCFIB2022M -> BANC -> JRCVNC2018F -> JRCVNC2018U
+```
+
+So a maleCNS **brain** transform in a process that has registered our fields silently sends
+a male volume through a female CNS. Nothing errors; the output is plausible and wrong.
+
+**Do not rely on `find_bridging_path` for a non-BANC source in such a process.** The BANC
+image loader is unaffected — it only ever asks for a BANC source, and asserts no
+`ElastixTransform` survives in the path. A maleCNS loader needs the mirror of that
+assertion: **no `BANC`/`BANCum` node in the path**, or better, construct the
+`TransformSequence` from an explicit hop list rather than asking Dijkstra at all.
+
+Raising the weight is not a fix: any weight below the elastix edges' makes BANC-routed
+paths attractive, and a weight at or above them stops the baked fields being chosen for
+BANC itself, which is the whole point of them.
+
 ---
 
 ## CODE-2 — `except Exception` cannot catch navis's missing-elastix error · **medium** · open
