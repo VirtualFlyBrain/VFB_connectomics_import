@@ -74,13 +74,18 @@ def resolve_field_dir(field_dir=None):
     """Where the fields should be, and which of the three sources decided that.
 
     Returning the provenance matters in CI: 'built-in default' in a Jenkins log is the
-    tell that `$BANC_FIELD_DIR` was never set on the agent.
+    tell that neither environment variable was set on the agent.
+
+    `$IMAGE_FIELD_DIR` is the name to use — one directory holds every connectome's fields,
+    so the BANC-specific spelling was never right. `$BANC_FIELD_DIR` is still honoured
+    because Jenkins jobs and docs/TRANSFORMS.md use it.
     """
     if field_dir:
         return field_dir, 'field_dir argument'
-    env = os.environ.get('BANC_FIELD_DIR')
-    if env:
-        return env, '$BANC_FIELD_DIR'
+    for var in ('IMAGE_FIELD_DIR', 'BANC_FIELD_DIR'):
+        env = os.environ.get(var)
+        if env:
+            return env, f'${var}'
     return BUILTIN_FIELD_DIR, 'built-in default (a developer path — not valid in CI)'
 
 

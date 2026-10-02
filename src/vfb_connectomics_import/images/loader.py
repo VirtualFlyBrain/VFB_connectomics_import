@@ -1,9 +1,16 @@
 #!/usr/bin/env python
-"""Write BANC v888 neuron images (SWC + OBJ + NRRD) onto the VFB templates.
+"""Write EM neuron images (SWC + OBJ + NRRD) onto the VFB templates.
 
-Replaces the ad-hoc maleCNS-style loader that lived only inside a Jenkins job. Same output
+Replaces the ad-hoc per-dataset loaders that lived only inside Jenkins jobs. Same output
 contract — `volume.swc`, `volume_man.obj`, `volume.nrrd` written into the KB-supplied
-folder — but BANC-specific and version-controlled.
+folder — but version-controlled, and driven by a declared dataset rather than by constants
+in this file.
+
+`--connectome banc|malecns` selects everything that differs between datasets. None of it
+lives here: identity, cut planes and transform chains are in
+[`connectomes.py`](connectomes.py), geometry fetching in [`sources.py`](sources.py), chain
+resolution in [`chain.py`](chain.py) and the mesh-size policy in [`sizing.py`](sizing.py).
+This module owns orchestration and the deletion policy, and nothing else.
 
 The filesystem contract (what is written, swapped and deleted) lives in
 [`io.py`](io.py). It is separate because it is the part that can
@@ -12,13 +19,13 @@ tested outright. This module owns fetching, geometry, transforms and orchestrati
 
 Usage
 -----
-    export BANC_FIELD_DIR=/local/banc_transform_fields      # required, see docs/TRANSFORMS.md
+    export IMAGE_FIELD_DIR=/local/transform_fields          # required, see docs/TRANSFORMS.md
     export KB_USER=... KB_PASSWORD=...
-    vfb-banc-images --region brain --workers 8 --ledger run.jsonl
+    vfb-em-images --connectome malecns --region both --workers 8 --ledger run.jsonl
     # or, uninstalled: PYTHONPATH=src python -m vfb_connectomics_import.images.loader
 
     # Jenkins/SLURM array: split the work list N ways, one ledger per task
-    vfb-banc-images --region brain --shard $I --of $N --ledger shard-$I.jsonl
+    vfb-em-images --connectome banc --region brain --shard $I --of $N --ledger shard-$I.jsonl
 
     # stage skeletons in bulk first (strongly recommended, see --skeleton-dir)
     gsutil -m rsync -r \
@@ -27,7 +34,8 @@ Usage
 
 Replace in place, one neuron at a time (`--mode replace`, the default)
 ---------------------------------------------------------------------
-Almost every BANC neuron **already has** a v626-era image. This job replaces them, and it
+Almost every neuron in both current datasets **already has** an image. This job replaces
+them, and it
 is emphatically *not* wipe-everything-then-rebuild: at no point is any neuron left without
 an image. Per neuron the complete new set is built to `volume.partial.*`, then swapped in
 with `os.replace` — atomic and overwriting, so a served file goes straight from old to new
@@ -75,28 +83,29 @@ line that would reproduce it.
 
 What it does per neuron
 -----------------------
-1. Fetch the mesh (cloudvolume, anonymous HTTPS) and a skeleton. Skeleton preference:
-     a. the published `<root>_skeleton.swc`  (full resolution, 57.5% of neurons)
-     b. **skeletonised from the mesh** for the `_l2`-only 40.7%. Measured ~5 us/face
-        (0.10-0.44 s), cheaper than the mesh fetch we already pay, and 20-27x more nodes
-        than the published `_l2` (468 vs 21, 1467 vs 46, 2560 vs 95).
-     c. the coarse `<root>_l2.swc`, only if skeletonisation fails.
-2. Cut at the NEUROPIL boundary — brain y < 305,801 nm, vnc y > 549,946 nm. The 244 um of
-   neck connective between them is dropped from both halves: registration support runs
-   ~200 um past each neuropil with no anatomy to constrain it, so material there warps into
-   plausible coordinates that pass a bbox check (docs/ISSUES.md IMG-3).
-3. Transform with the pre-baked fields (`banc_baked`) — no elastix, no `via`/`avoid`.
+1. Fetch a skeleton, in the dataset's preference order: the publisher's own full-resolution
+   SWC where there is one; else **skeletonised from the mesh** (measured ~5 us/face, cheaper
+   than the mesh fetch we already pay, and 20-27x more nodes than BANC's published `_l2`);
+   else the dataset's coarse fallback if it has one.
+2. Fetch the mesh and cut it at the NEUROPIL boundary, in SOURCE space, on the axis the
+   dataset separates on (BANC on y, maleCNS on z). The gap between the two neuropils —
+   244 um for BANC, 187 um for maleCNS — is dropped from both halves: registration support
+   runs well past each neuropil with no anatomy to constrain it, so material there warps
+   into plausible coordinates that *pass* a bbox check (docs/ISSUES.md IMG-3). This is the
+   step whose absence is IMG-2.
+3. Transform along the region's DECLARED chain, with the baked field collapsing the
+   expensive span — no path search, no elastix, no `via`/`avoid`. See connectomes.py.
 4. Trim to the target template bounding box.
 5. Decide: swap the new set in, delete a spurious old one, or keep what is there.
-6. Decimate for the OBJ only, to hemibrain's 37 faces/um2 (docs/ISSUES.md IMG-1). The NRRD
-   keeps the full-resolution mesh: it voxelises onto a ~0.5 um grid, so it neither gains from the
-   fine mesh nor suffers from the coarse one.
+6. Size the OBJ. Where the publisher ships an LOD ladder, choose a rung and serve their
+   geometry unaltered; where they do not (BANC), decimate ours. See sizing.py. The NRRD is
+   unaffected either way: it voxelises onto a ~0.5 um grid, so it neither gains from a fine
+   mesh nor suffers from a coarse one.
 
-BANC publishes only LOD 0, so there is no coarser mesh to fetch and the step-6 decimation
-is ours. Neuroglancer remains the long-term answer for serving.
+Neuroglancer remains the long-term answer for serving.
 
-See docs/TRANSFORMS.md (transform paths, staging, the `use_https` trap) and docs/ISSUES.md
-(IMG-1/IMG-3/IMG-4).
+See docs/TRANSFORMS.md (transform paths, staging, the `use_https` trap), docs/MESH_SIZING.md
+(which rung, or decimate) and docs/ISSUES.md (IMG-1/IMG-2/IMG-3/IMG-4).
 """
 import argparse
 import base64
@@ -128,19 +137,11 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))   # -> src/, so the package imports
+from vfb_connectomics_import.images import chain, connectomes, sizing, sources  # noqa: E402
 from vfb_connectomics_import.images.io import (          # noqa: E402
     PRODUCTS, TERMINAL, Ledger, OutputSet, partial_path)
 
-BUCKET = 'lee-lab_brain-and-nerve-cord-fly-connectome'
-MAT = '888'
-SWC_PREFIX = f'compiled_data/banc_{MAT}/banc_banc_space_swc'
 KB_ENDPOINT = os.environ.get('KB_ENDPOINT', 'http://kb.virtualflybrain.org:80')
-DATASET = 'Bates2026'             # Bates2026 = BANC v888
-SITE = 'BANC888'                  # the Site/Connectome node carrying v888 accessions
-#: SWC files in the bucket's banc_banc_space_swc/ as of 2026-08-25 — 108,483
-#: `_skeleton` + 76,797 `_l2`, mutually exclusive, one per v888 root that has one.
-#: Used only to judge whether a staged mirror is complete.
-EXPECTED_SWC = 185_280
 VFB_URL_PREFIXES = ('http://www.virtualflybrain.org/data/',
                     'https://www.virtualflybrain.org/data/')
 
@@ -157,57 +158,31 @@ def hush_navis():
         logging.getLogger(name).setLevel(logging.ERROR)
 
 
-# ------------------------------------------------------------------------------- regions
-@dataclass
-class Region:
-    """One template and everything that differs about it.
+# ------------------------------------------------------------------------- cutting
+# A `connectomes.Cut` names the axis, the plane and which side this region keeps. BANC
+# separates on y and maleCNS on z, so neither can be hard-coded here; and cutting in SOURCE
+# space is mandatory rather than a convenience, because the target-template bbox trim that
+# follows it does NOT catch misplaced material (docs/ISSUES.md IMG-3).
+def cut_swc(arr, cut):
+    """Rows of an SWC array on the keep side of the plane. Columns 2:5 are xyz."""
+    return arr[cut.mask(arr[:, 2:5])]
 
-    `grid`/`spacing` are VFB's *display* grid, read from the template NRRD headers on the
-    VFB file server — NOT flybrains' native grid (0.38 um isotropic for JRC2018U). The NRRD
-    must align with the stack VFB already serves. `bounds` is `(grid - 1) * spacing`, which
-    is exactly how the maleCNS script's constants (627.3695649, 293.1875965, 173) decode.
 
-    `cut_y` is the BANC neuropil boundary in nanometres and `keep` which side to keep:
-    -1 for y below it (brain, BANC_brain.ply y max), +1 for above (vnc, BANC_vnc.ply y min).
+def cut_mesh(mesh, cut):
+    """Open cut (cap=False) at the neuropil boundary. None if nothing remains.
+
+    `cap=False` on purpose: a cap would invent a flat disc of surface that is not anatomy,
+    inflate the area the mesh-sizing rule measures, and show up as a lid in the viewer.
     """
-    name: str
-    template: str
-    channel: str
-    grid: Sequence[int]
-    spacing: Sequence[float]
-    cut_y: float
-    keep: int
-    bounds: list = field(init=False)
-
-    def __post_init__(self):
-        self.bounds = [[0.0, (n - 1) * s] for n, s in zip(self.grid, self.spacing)]
-
-    def bb(self):
-        return np.asarray(self.bounds, float)
-
-    def cut_swc(self, arr):
-        col_y = arr[:, 3]
-        return arr[col_y < self.cut_y] if self.keep < 0 else arr[col_y > self.cut_y]
-
-    def cut_mesh(self, mesh):
-        """Open cut (cap=False) at the neuropil boundary. None if nothing remains."""
-        try:
-            h = mesh.slice_plane(plane_origin=np.array([0.0, self.cut_y, 0.0]),
-                                 plane_normal=np.array([0.0, float(self.keep), 0.0]),
-                                 cap=False)
-        except BaseException:
-            return None
-        return h if (h is not None and len(h.faces)) else None
-
-
-REGIONS = {
-    'brain': Region('brain', 'JRC2018U', 'VFBc_00101567',
-                    grid=(1210, 566, 174), spacing=(0.5189161, 0.5189161, 1.0),
-                    cut_y=305_801.0, keep=-1),
-    'vnc': Region('vnc', 'JRCVNC2018U', 'VFBc_00200000',
-                  grid=(660, 1290, 382), spacing=(0.4, 0.4, 0.4),
-                  cut_y=549_946.0, keep=+1),
-}
+    normal = np.zeros(3)
+    normal[cut.axis] = float(cut.keep)
+    origin = np.zeros(3)
+    origin[cut.axis] = float(cut.at)
+    try:
+        h = mesh.slice_plane(plane_origin=origin, plane_normal=normal, cap=False)
+    except BaseException:
+        return None
+    return h if (h is not None and len(h.faces)) else None
 
 
 # ------------------------------------------------------------------- mesh size reduction
@@ -243,8 +218,14 @@ REGIONS = {
 # for twig fidelity, not a correction. Source density is ~197 f/um2, confirmed two ways:
 # measured directly in IMG-1 (199-220), and back-computed from the 18.8% of faces kept at
 # 37 on live output.
-MESH_DENSITY = 100.0         # faces per um2 of surface area
-MESH_BUDGET_MB = 4.0         # leave a mesh alone if it is already this small on the wire
+#
+# Superseded for datasets that publish a ladder (2026-09-16, docs/MESH_SIZING.md): where
+# the publisher ships several rungs we pick one of theirs and decimate nothing, because the
+# objective is responsibility rather than quality. `MESH_DENSITY` is therefore the target
+# only for a dataset with no ladder — today that is BANC alone. It is now one side of a
+# two-sided target: `sizing.decimate_target()` also caps the result at the wire budget,
+# which this constant on its own never did.
+MESH_DENSITY = 100.0         # faces per um2 of surface area; no-ladder datasets only
 OBJ_DP = 3                   # 1 nm quantisation; worst vertex moves 0.86 nm (IMG-1)
 
 
@@ -255,17 +236,22 @@ class Settings:
     Passed once to the pool initializer rather than threaded through each task — the task
     is then just (root, folder, region), which is what it should have been all along.
     """
+    connectome: str = 'banc'                 # key into connectomes.CONNECTOMES
     products: Sequence[str] = ('swc', 'obj', 'nrrd')
     mode: str = 'replace'                    # 'replace' | 'fill'
     delete_spurious: bool = True
     min_nodes: int = 10
     min_faces: int = 100
-    mesh_density: float = MESH_DENSITY
-    mesh_budget_mb: float = MESH_BUDGET_MB
+    mesh_density: float = MESH_DENSITY       # no-ladder datasets only; see sizing.py
+    budget: sizing.Budget = field(default_factory=sizing.Budget)
     field_dir: Optional[str] = None
     skeleton_dir: Optional[str] = None
     archive_dir: Optional[str] = None
     mmap: bool = True
+
+    @property
+    def cx(self):
+        return connectomes.get(self.connectome)
 
 
 # ---------------------------------------------------------------------------- worker state
@@ -279,8 +265,9 @@ class Settings:
 class _Worker:
     navis = None
     settings = Settings()
+    cx = None
     seq = {}
-    cv = None
+    src = None
 
 
 _W = _Worker()
@@ -289,52 +276,48 @@ _W = _Worker()
 def worker_init(settings):
     import navis
     import flybrains
-    from vfb_connectomics_import.images import transforms as banc_baked
 
     flybrains.register_transforms()
     navis.set_pbars(hide=True)
     hush_navis()
-    banc_baked.register(field_dir=settings.field_dir, mmap=settings.mmap,
-                        verbose=False)                     # raises if absent
 
     _W.navis = navis
     _W.settings = settings
+    _W.cx = settings.cx
     _W.seq = {}
-    _W.cv = None
+    _W.src = sources.for_connectome(settings.connectome,
+                                    skeleton_dir=settings.skeleton_dir)
+    # Note what is NOT here: `transforms.register()`. Chains are resolved by named edge
+    # lookup (chain.py), so the baked fields never enter the navis registry and therefore
+    # cannot perturb routing for anything else sharing this process — which is how
+    # registering BANC's fields used to break maleCNS's brain path (docs/ISSUES.md CODE-1).
 
 
 def _seq(region):
-    """TransformSequence for this region, built on first use inside this worker."""
+    """TransformSequence for this region, built on first use inside this worker.
+
+    `chain.resolve` walks the region's DECLARED hops. It never searches for a path, so a
+    flybrains upgrade that adds a dataset or retypes an edge fails loudly here instead of
+    silently rerouting a male CNS through a female VNC template.
+    """
     if region.name not in _W.seq:
-        from navis.transforms.base import TransformSequence
-        path, trs = _W.navis.transforms.registry.find_bridging_path('BANC', region.template)
-        if any('Elastix' in type(t).__name__ for t in trs):
-            raise RuntimeError(
-                f'elastix is in the BANC -> {region.template} path '
-                f'({" -> ".join(path)}); the baked fields are not being used. '
-                f'Check $BANC_FIELD_DIR.')
-        _W.seq[region.name] = TransformSequence(*trs, copy=False)
+        seq, _desc = chain.resolve(region, field_dir=_W.settings.field_dir,
+                                   mmap=_W.settings.mmap)
+        _W.seq[region.name] = seq
     return _W.seq[region.name]
-
-
-def _cv():
-    """cloudvolume handle. `use_https=True` is mandatory: without it cloudvolume falls
-    through to google-cloud-python and dies with DefaultCredentialsError on any machine
-    without application-default credentials — i.e. on every Jenkins agent."""
-    if _W.cv is None:
-        from cloudvolume import CloudVolume
-        _W.cv = CloudVolume(f'precomputed://gs://{BUCKET}/neuron_meshes',
-                            use_https=True, progress=False)
-    return _W.cv
 
 
 # ------------------------------------------------------------------------------- fetching
 @dataclass
 class Sources:
-    """What we managed to fetch for one neuron, in BANC nanometres."""
+    """What we managed to fetch for one neuron, in the connectome's SOURCE units."""
     mesh: object = None
     swc: object = None
     swc_source: str = 'none'
+    #: rung `mesh` was fetched at. For a dataset with a ladder this is the COARSEST rung —
+    #: it is here to measure surface area cheaply, not to be served. `size_mesh()` fetches
+    #: the rung that actually gets written.
+    mesh_lod: Optional[int] = None
 
     @property
     def usable(self):
@@ -343,44 +326,36 @@ class Sources:
         return self.mesh is not None or self.swc is not None
 
 
-def fetch_mesh(root):
-    """BANC mesh as a trimesh, in BANC nanometres. None if absent.
+def probe_lod(cx):
+    """The rung to fetch first: the coarsest the ladder offers, or 0 with no ladder.
 
-    Mesh coverage is incomplete upstream — 94.4% of `_skeleton` roots and 68.8% of
-    `_l2`-only roots (docs/ISSUES.md IMG-4) — because bancpipeline wraps each mesh in `try()`
-    and swallows failures. So a missing mesh is expected, not exceptional.
+    Coarsest because this fetch exists to measure area, and area is the one quantity that
+    barely moves between rungs — maleCNS lod3 keeps 92-95% of lod0's area while costing
+    ~0.4% of the faces. Paying lod1 to find out we cannot afford lod1 would be the obvious
+    way to get this wrong.
     """
-    import trimesh
-    try:
-        cv = _cv()
-    except ImportError:
-        raise                      # a config problem, not a missing mesh — never swallow
-    try:
-        m = cv.mesh.get(int(root))
-    except Exception:
-        return None                # genuinely absent upstream; expected, see docstring
-    mm = m[int(root)] if isinstance(m, dict) else m
-    return trimesh.Trimesh(vertices=np.asarray(mm.vertices, np.float64),
-                           faces=np.asarray(mm.faces, np.int64), process=False)
+    return max(cx.ladder.rungs) if cx.ladder else 0
 
 
-def fetch_published_swc(root, suffix):
-    """`<root>_{skeleton,l2}.swc` from the staged local dir, else the bucket. None if absent."""
-    name = f'{root}_{suffix}.swc'
-    d = _W.settings.skeleton_dir
-    if d:
-        p = os.path.join(d, name)
-        if not os.path.exists(p):
-            return None          # a staged dir is authoritative: it is a full mirror
-        with open(p) as fh:
-            return np.loadtxt(io.StringIO(fh.read()), comments='#', ndmin=2)
-    try:
-        raw = urllib.request.urlopen(
-            f'https://storage.googleapis.com/{BUCKET}/{SWC_PREFIX}/{name}',
-            timeout=300).read().decode()
-    except Exception:
-        return None
-    return np.loadtxt(io.StringIO(raw), comments='#', ndmin=2)
+def load_sources(ident):
+    """Skeleton + probe mesh, in preference order (see the module docstring).
+
+    Mesh coverage can be incomplete upstream — BANC publishes one for 94.4% of `_skeleton`
+    roots and 68.8% of `_l2`-only roots (docs/ISSUES.md IMG-4), because bancpipeline wraps
+    each mesh in `try()` and swallows failures. So a missing mesh is expected, not
+    exceptional, and must never be read as "this neuron has nothing here".
+    """
+    src, cx = _W.src, _W.cx
+    lod = probe_lod(cx)
+    mesh = src.mesh(ident, lod=lod)
+    for arr, label in ((src.skeleton(ident), 'published_skeleton'),
+                       (skeleton_from_mesh(ident, mesh), 'skeletonised_mesh'),
+                       (src.coarse_skeleton(ident), 'published_coarse')):
+        if arr is not None and len(arr) > 1:
+            return Sources(mesh=mesh, swc=arr, swc_source=label,
+                           mesh_lod=lod if mesh is not None else None)
+    return Sources(mesh=mesh, swc=None, swc_source='none',
+                   mesh_lod=lod if mesh is not None else None)
 
 
 def as_mesh_neuron(tm, name):
@@ -391,14 +366,23 @@ def as_mesh_neuron(tm, name):
     return mn
 
 
-def skeleton_from_mesh(root, mesh):
-    """Skeletonise the mesh into an SWC array, or None. This is what upstream did to make
-    the published `_skeleton` files (skeletor), so it is the same operation rather than a
-    substitute — and it beats the 125x-coarser published `_l2`."""
+def skeleton_from_mesh(ident, mesh):
+    """Skeletonise the mesh into an SWC array, or None.
+
+    This is what upstream did to make BANC's published `_skeleton` files (skeletor), so it
+    is the same operation rather than a substitute — and it beats the 125x-coarser `_l2`.
+
+    On a dataset with a ladder the mesh handed in is the COARSEST rung, which would make a
+    poor skeleton. That is acceptable only because this is a second-choice path that
+    essentially never fires there: maleCNS publishes an SWC for 211,573 segments against
+    the 166,701 VFB imports, so `published_skeleton` wins every time. If a future dataset
+    has a ladder and poor skeleton coverage, fetch a finer rung here rather than living
+    with it.
+    """
     if mesh is None or not len(mesh.faces):
         return None
     try:
-        n = _W.navis.skeletonize(as_mesh_neuron(mesh, root)).nodes
+        n = _W.navis.skeletonize(as_mesh_neuron(mesh, ident)).nodes
     except Exception:
         return None
     arr = np.column_stack([
@@ -407,17 +391,6 @@ def skeleton_from_mesh(root, mesh):
         n.radius.values if 'radius' in n else np.zeros(len(n)),
         n.parent_id.values])
     return arr if len(arr) > 1 else None
-
-
-def load_sources(root):
-    """Mesh + best available skeleton, in preference order (see the module docstring)."""
-    mesh = fetch_mesh(root)
-    for arr, label in ((fetch_published_swc(root, 'skeleton'), 'published_skeleton'),
-                       (skeleton_from_mesh(root, mesh), 'skeletonised_mesh'),
-                       (fetch_published_swc(root, 'l2'), 'published_l2')):
-        if arr is not None and len(arr) > 1:
-            return Sources(mesh=mesh, swc=arr, swc_source=label)
-    return Sources(mesh=mesh, swc=None, swc_source='none')
 
 
 # ----------------------------------------------------------------------- transform + trim
@@ -433,7 +406,7 @@ def transform_swc(arr, region):
     """Cut, transform and trim an SWC array. Microns out, radius in microns. None if empty."""
     if arr is None:
         return None
-    arr = region.cut_swc(arr)
+    arr = cut_swc(arr, region.cut)
     if not len(arr):
         return None
     xyz = xform(arr[:, 2:5], region)
@@ -456,7 +429,7 @@ def transform_mesh(mesh, region):
     import trimesh
     if mesh is None:
         return None
-    mesh = region.cut_mesh(mesh)
+    mesh = cut_mesh(mesh, region.cut)
     if mesh is None:
         return None
     xyz = xform(np.asarray(mesh.vertices), region)
@@ -491,8 +464,90 @@ class Halves:
 
 
 def build_halves(sources, region):
+    """The skeleton half and a PROBE mesh half, both in template microns.
+
+    The mesh here is whatever rung `load_sources` fetched — the coarsest, on a dataset with
+    a ladder. It is enough to answer "is there anything in this region" and "how much
+    surface area", which is all `decide()` and `size_mesh()` need from it.
+    """
     return Halves(swc=transform_swc(sources.swc, region),
                   mesh=transform_mesh(sources.mesh, region))
+
+
+def surface_area(mesh):
+    v, f = np.asarray(mesh.vertices), np.asarray(mesh.faces)
+    return float(np.linalg.norm(np.cross(v[f[:, 1]] - v[f[:, 0]],
+                                         v[f[:, 2]] - v[f[:, 0]]), axis=1).sum() / 2)
+
+
+def size_mesh(ident, region, probe, st, rec):
+    """The mesh to serve for this region, chosen per docs/MESH_SIZING.md.
+
+    `probe` is the already-cut, already-transformed coarse mesh; its area sets the plan.
+    Returns `(mesh, note)` in template microns, or `(probe, note)` for a dataset with no
+    ladder, where the rung question does not arise and `decimate_mesh` does the work at
+    write time instead.
+
+    The loop is **predict to choose, measure to serve**: the plan picks a starting rung,
+    and then every rung is judged on the face count that actually arrived. A rung that
+    busts the budget or the density ceiling steps down; if the ladder runs out, the finest
+    admissible rung is decimated, which is the one path that reprocesses anybody's
+    geometry.
+    """
+    cx, budget = st.cx, st.budget
+    if cx.ladder is None or probe is None:
+        return probe, 'no ladder; decimation decides'
+
+    area = surface_area(probe)
+    rec['area_um2'] = round(area, 1)
+    preds, start = sizing.plan(area, cx.ladder, budget)
+    rec['lod_plan'] = ' '.join(f'lod{p.lod}={p.mb}MB{"" if p.fits else "!"}' for p in preds)
+    if start is None:
+        raise RuntimeError(f'{cx.id}: no rung of the ladder is under the '
+                           f'{budget.ceiling_f_per_um2} f/um2 ceiling')
+
+    tried, lod = [], start
+    while lod is not None:
+        raw = _W.src.mesh(ident, lod=lod)
+        got = transform_mesh(raw, region)
+        del raw
+        if got is None:
+            # The rung exists but nothing of it survives here. Trust the probe rather than
+            # concluding the region is empty — a coarse rung can lose a thin process the
+            # finer ones keep.
+            tried.append(f'lod{lod}=empty')
+            lod = sizing.next_rung(lod, cx.ladder, budget)
+            continue
+        n = len(got.faces)
+        verdict = sizing.judge(n, area, budget)
+        tried.append(f'lod{lod}={sizing.estimate_mb(n, budget):.1f}MB'
+                     f'/{n / area:.0f}f' + ('' if verdict == sizing.ACCEPT else f'[{verdict}]'))
+        if verdict == sizing.ACCEPT:
+            rec.update(obj_lod=lod, obj_f_per_um2=round(n / area, 1),
+                       lod_tried=' '.join(tried))
+            return got, f'lod{lod}, {n:,} faces, {n / area:.0f} f/um2'
+        nxt = sizing.next_rung(lod, cx.ladder, budget)
+        if nxt is None:
+            break
+        del got
+        lod = nxt
+
+    # Nothing the publisher ships fits. Decimate the finest admissible rung to the stricter
+    # of the ceiling and the budget. On maleCNS this has never fired and is not expected to:
+    # lod3 does not reach 20 MB until ~328,000 um2, and APL_R — the largest cell measured —
+    # is 63,397 um2.
+    finest = sizing.admissible(cx.ladder, budget)[0]
+    got = transform_mesh(_W.src.mesh(ident, lod=finest), region)
+    if got is None:
+        return None, 'no rung yielded anything here'
+    before = len(got.faces)
+    got = _decimate_to(got, sizing.decimate_target(
+        before, area, budget.ceiling_f_per_um2, budget))
+    rec.update(obj_lod=finest, obj_decimated=True,
+               obj_f_per_um2=round(len(got.faces) / area, 1),
+               lod_tried=' '.join(tried))
+    return got, (f'lod{finest} DECIMATED {before:,} -> {len(got.faces):,} faces '
+                 f'(no rung fits)')
 
 
 # ---------------------------------------------------------------------------- the decision
@@ -581,39 +636,45 @@ def write_nrrd(obj, region, path):
     del vx
 
 
-def _surface_area(mesh):
-    v, f = np.asarray(mesh.vertices), np.asarray(mesh.faces)
-    return float(np.linalg.norm(np.cross(v[f[:, 1]] - v[f[:, 0]],
-                                         v[f[:, 2]] - v[f[:, 0]]), axis=1).sum() / 2)
-
-
-def decimate_mesh(mesh, density=MESH_DENSITY, budget_mb=MESH_BUDGET_MB):
-    """Quadric-decimate to `density` faces/um2. Returns (mesh, note).
-
-    Skipped when the mesh is already at or below the target density, and when it is small
-    enough that reducing it buys nothing -- most BANC neurons are a few MB and there is no
-    reason to spend fidelity on them. Wire size is estimated at ~9 bytes/face, which is
-    what 3 dp OBJ gzips to across every mesh measured.
-    """
+def _decimate_to(mesh, target):
+    """Quadric-decimate to exactly `target` faces. `target` None leaves the mesh alone."""
     import trimesh
-    if not density or density <= 0:
-        return mesh, 'decimation disabled'
-    n = len(mesh.faces)
-    if n < 1000:
-        return mesh, 'too small to decimate'
-    if n * 9 / 1e6 <= budget_mb:
-        return mesh, f'{n * 9 / 1e6:.2f} MB est <= {budget_mb} MB budget'
-    area = _surface_area(mesh)
-    target = int(density * area)
-    if target >= 0.95 * n:                 # already at the target; not worth a rewrite
-        return mesh, f'already {n / area:.0f} f/um2 <= {density:.0f}'
     import fast_simplification
+    n = len(mesh.faces)
+    if not target or target >= n:
+        return mesh
     v, f = fast_simplification.simplify(np.asarray(mesh.vertices, np.float32),
                                         np.asarray(mesh.faces, np.int32),
                                         target_reduction=1 - target / n)
-    out = trimesh.Trimesh(vertices=np.asarray(v, float), faces=np.asarray(f, int),
-                          process=False)
-    return out, f'{n:,} -> {len(out.faces):,} faces ({n / area:.0f} -> {density:.0f} f/um2)'
+    return trimesh.Trimesh(vertices=np.asarray(v, float), faces=np.asarray(f, int),
+                           process=False)
+
+
+def decimate_mesh(mesh, density=MESH_DENSITY, budget=None):
+    """Quadric-decimate for a dataset with no LOD ladder. Returns (mesh, note).
+
+    Only reached for BANC today. Where the publisher ships rungs we pick one of theirs and
+    never arrive here — see `size_mesh` and docs/MESH_SIZING.md.
+
+    The target is `sizing.decimate_target`, which is **two-sided**: density binds for a
+    typical neuron and the wire budget binds for the tail. The budget cap is the part that
+    used to be missing — `budget_mb` was consulted only as a skip threshold while
+    `density * area` ran uncapped, so a 60,000 um2 neuron decimated to ~6 M faces (~50 MB)
+    and this function reported success. A second escape was worse still: a mesh already
+    below the density target was returned untouched however large it was.
+    """
+    budget = budget or sizing.Budget()
+    n = len(mesh.faces)
+    area = surface_area(mesh)
+    target = sizing.decimate_target(n, area, density, budget)
+    if target is None:
+        if n < 1000:
+            return mesh, 'too small to decimate'
+        return mesh, f'{sizing.estimate_mb(n, budget):.2f} MB est, within both limits'
+    out = _decimate_to(mesh, target)
+    capped = ' (budget cap)' if target == budget.max_faces else ''
+    return out, (f'{n:,} -> {len(out.faces):,} faces '
+                 f'({n / area:.0f} -> {len(out.faces) / area:.0f} f/um2){capped}')
 
 
 def write_obj(mesh, path, dp=OBJ_DP):
@@ -645,12 +706,18 @@ def build_products(root, halves, region, out, st, rec):
     if halves.mesh is not None:
         mesh_neuron = as_mesh_neuron(clip_mesh(halves.mesh, region), root)
         if 'obj' in out.products:
-            dec, note = decimate_mesh(halves.mesh, st.mesh_density, st.mesh_budget_mb)
+            if st.cx.ladder is None:
+                # No ladder: this is the only mesh there is, so reduce it ourselves.
+                dec, note = decimate_mesh(halves.mesh, st.mesh_density, st.budget)
+            else:
+                # `size_mesh` already chose a published rung and verified its face count.
+                dec, note = halves.mesh, rec.get('obj_note', 'rung chosen by size_mesh')
             rec['obj_faces'], rec['obj_note'] = len(dec.faces), note
             tmp = partial_path(out.paths['obj'])
             write_obj(dec, tmp)
             built[tmp] = out.paths['obj']
-            del dec
+            if dec is not halves.mesh:
+                del dec
 
     if 'nrrd' in out.products:
         # Prefer the mesh for NRRD detail, fall back to the skeleton — same preference
@@ -669,7 +736,8 @@ def build_products(root, halves, region, out, st, rec):
 def process(task):
     """One neuron, one region. Never raises: failures come back as status='error'."""
     root, folder, region_name = task
-    region, st = REGIONS[region_name], _W.settings
+    st = _W.settings
+    region = st.cx.region(region_name)
     t0 = time.time()
     rec = dict(root=root, region=region_name, folder=folder, status='?',
                swc_source='none', nodes=0, faces=0, wrote=[], removed=[],
@@ -696,8 +764,14 @@ def process(task):
         sources = load_sources(root)
         rec['swc_source'] = sources.swc_source
         halves = build_halves(sources, region)
+        del sources.mesh                     # the probe; the big allocation, drop it early
+
+        # Choose the rung to serve, if this dataset ships a ladder. Done BEFORE decide()
+        # so materiality is judged on the mesh that would actually be written, not on the
+        # coarse probe — at lod3 a real arbor can fall under --min-faces.
+        if halves.mesh is not None:
+            halves.mesh, rec['obj_note'] = size_mesh(root, region, halves.mesh, st, rec)
         rec['nodes'], rec['faces'] = halves.nodes, halves.faces
-        del sources.mesh                     # the big allocation; drop it early
 
         action, status, note = decide(sources, halves, had_image, st)
         rec['note'] = note
@@ -771,7 +845,7 @@ def kb_query(statement, endpoint=KB_ENDPOINT):
     return [x['row'] for x in d['results'][0]['data']]
 
 
-def kb_worklist(region_name, dataset, site=SITE, endpoint=KB_ENDPOINT):
+def kb_worklist(cx, region_name, dataset=None, site=None, endpoint=KB_ENDPOINT):
     """(root_id, folder) for every channel of `dataset` registered to this region's template.
 
     This returns ALL of them — the KB has pre-created channels on both templates for every
@@ -789,10 +863,13 @@ def kb_worklist(region_name, dataset, site=SITE, endpoint=KB_ENDPOINT):
     BANC626/BANC888 accessions (0 differ) — same root, same segment, so replacing their
     image is correct for both.
     """
+    dataset = dataset or cx.dataset
+    site = site or cx.site
+    channel = cx.region(region_name).template.channel
     rows = kb_query(
         f"MATCH (d:DataSet {{short_form:'{dataset}'}})<-[:has_source]-(i:Individual)"
         f"<-[:depicts]-(ic:Individual)-[r:in_register_with]"
-        f"->(tc:Template {{short_form:'{REGIONS[region_name].channel}'}}) "
+        f"->(tc:Template {{short_form:'{channel}'}}) "
         f"MATCH (i)-[x:database_cross_reference]->(:Site {{short_form:'{site}'}}) "
         f"RETURN x.accession[0] AS root, r.folder[0] AS folder, "
         f"r.filename[0] AS reg_filename", endpoint=endpoint)
@@ -854,8 +931,9 @@ def build_tasks(args, regions):
     """
     tasks = []
     for name in regions:
-        rows = kb_worklist(name, args.dataset, site=args.site)
-        print(f'{name}: {len(rows):,} channels in {args.dataset}', flush=True)
+        cx = connectomes.get(args.connectome)
+        rows = kb_worklist(cx, name, dataset=args.dataset, site=args.site)
+        print(f'{name}: {len(rows):,} channels in {args.dataset or cx.dataset}', flush=True)
         tasks += [(root, to_local(folder, args.write_root), name) for root, folder in rows]
     tasks.sort()
 
@@ -867,9 +945,13 @@ def build_tasks(args, regions):
     if args.roots:
         wanted = set(_read_roots(args.roots))
         tasks = [t for t in tasks if t[0] in wanted]
-        missing = wanted - {t[0] for t in tasks}
-        print(f'--roots: {len(tasks):,} of {len(wanted):,} requested roots are in this '
-              f'selection' + (f'; not found: {sorted(missing)[:5]}' if missing else ''))
+        found = {t[0] for t in tasks}
+        missing = wanted - found
+        # Count ROOTS, not tasks: --region both gives two tasks per root, and reporting
+        # "6 of 3 requested roots" reads like a bug in the selection.
+        print(f'--roots: {len(found):,} of {len(wanted):,} requested roots matched '
+              f'({len(tasks):,} task(s) across {len(regions)} region(s))'
+              + (f'; not found: {sorted(missing)[:5]}' if missing else ''))
     if args.ledger and not args.redo:
         done = Ledger(args.ledger).done()
         if done:
@@ -926,6 +1008,11 @@ def log_selection(tasks, how, cap=200):
 def parse_args(argv=None):
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--connectome', default=os.environ.get('CONNECTOME', 'banc'),
+                    choices=sorted(connectomes.CONNECTOMES),
+                    help='which dataset to build. Selects the bucket, the cut planes, the '
+                         'transform chain, the DataSet/Site and the LOD ladder — all of '
+                         'them declared in images/connectomes.py, none of them here.')
     ap.add_argument('--region', default='brain', choices=['brain', 'vnc', 'both'],
                     help='which template(s) to write (default: brain)')
     ap.add_argument('--mode', default='replace', choices=['replace', 'fill'],
@@ -940,22 +1027,28 @@ def parse_args(argv=None):
                          'material in this region. Default is to remove it — that is the '
                          '~4,660 wrong-template images of docs/ISSUES.md IMG-3. Use this for a '
                          'first cautious pass.')
-    ap.add_argument('--ledger', default=os.environ.get('BANC_LEDGER'),
+    ap.add_argument('--ledger', default=os.environ.get('IMAGE_LEDGER',
+                                                       os.environ.get('BANC_LEDGER')),
                     help='append-only JSONL of finished neurons. REQUIRED for a meaningful '
                          'resume in replace mode: existing files cannot indicate progress '
                          'because almost every neuron already has them. Errors are retried.')
     ap.add_argument('--workers', type=int, default=8,
                     help='processes; ~350 MB peak each from voxelisation (default 8)')
     ap.add_argument('--field-dir', default=None,
-                    help='baked fields; default $BANC_FIELD_DIR (see docs/TRANSFORMS.md)')
-    ap.add_argument('--skeleton-dir', default=os.environ.get('BANC_SWC_DIR'),
+                    help='baked fields; default $IMAGE_FIELD_DIR or $BANC_FIELD_DIR '
+                         '(see docs/TRANSFORMS.md)')
+    ap.add_argument('--skeleton-dir', default=os.environ.get('IMAGE_SWC_DIR',
+                                                             os.environ.get('BANC_SWC_DIR')),
                     help='local mirror of banc_banc_space_swc/ — strongly recommended, it '
                          'removes ~0.5 s of per-neuron request latency')
     ap.add_argument('--write-root', default=os.environ.get('IMAGE_WRITE', '/IMAGE_WRITE/'),
                     help='local path that replaces the VFB data URL prefix')
-    ap.add_argument('--dataset', default=DATASET, help=f'VFB DataSet (default {DATASET})')
-    ap.add_argument('--site', default=SITE,
-                    help=f'Site node whose accession is the root id (default {SITE})')
+    ap.add_argument('--dataset', default=None,
+                    help="VFB DataSet; default is the connectome's own (Bates2026 for "
+                         'banc, Berg2025a for malecns)')
+    ap.add_argument('--site', default=None,
+                    help='Site node whose accession is the neuron id; default is the '
+                         "connectome's own (BANC888, male-cns_v1_0)")
     ap.add_argument('--shard', type=int, default=0, help='shard index for array jobs')
     ap.add_argument('--of', type=int, default=1, help='number of shards')
     ap.add_argument('--limit', type=int, default=None,
@@ -980,13 +1073,22 @@ def parse_args(argv=None):
     ap.add_argument('--min-faces', type=int, default=100,
                     help='mesh equivalent of --min-nodes (default 100)')
     ap.add_argument('--mesh-density', type=float, default=MESH_DENSITY,
-                    help='decimate the OBJ to this many faces per um2 of surface area '
-                         '(default 100, ~2x reduction on BANC. 37 is the hemibrain-matched '
-                         'value — ~5.3x — but breaks up the thinnest twigs). 0 disables '
-                         'decimation.')
-    ap.add_argument('--mesh-budget-mb', type=float, default=MESH_BUDGET_MB,
-                    help='leave a mesh undecimated if its estimated gzipped size is '
-                         'already under this (default 4 MB)')
+                    help='for datasets with NO LOD ladder (BANC today): decimate the OBJ '
+                         'to this many faces per um2 (default 100, ~2x reduction on BANC; '
+                         '37 is the hemibrain-matched value but breaks up the thinnest '
+                         'twigs). 0 disables the density target — the wire budget still '
+                         'applies. Ignored where the publisher ships rungs.')
+    ap.add_argument('--mesh-budget-mb', type=float, default=sizing.Budget.max_mb,
+                    help='hard cap on a served OBJ, in estimated GZIPPED MB (default 20). '
+                         'NOTE this changed meaning: it used to be the skip threshold, '
+                         'which is now --mesh-skip-mb. Enforced on the measured face '
+                         'count, never on the prediction.')
+    ap.add_argument('--mesh-skip-mb', type=float, default=sizing.Budget.skip_mb,
+                    help='leave a mesh alone if it is already smaller than this '
+                         '(default 4 MB). Never a cap — see --mesh-budget-mb.')
+    ap.add_argument('--mesh-ceiling', type=float, default=sizing.Budget.ceiling_f_per_um2,
+                    help='faces per um2 above which nothing displays better (default 200). '
+                         'A rung measuring above it steps down even if it fits the budget.')
     ap.add_argument('--no-mmap', action='store_true',
                     help='read the baked fields into memory instead of memory-mapping '
                          'them. Only needed if the mount does not support mmap (some NFS '
@@ -1016,39 +1118,56 @@ def parse_args(argv=None):
     return ap.parse_args(argv)
 
 
-#: region -> the H5 bridging registration its tail hop needs, and the flybrains downloader
-#: that fetches it. The BANC -> JRC2018F/JRCVNC2018F hop is our baked field; this is the
-#: JRC2018F -> JRC2018U (or VNC equivalent) hop, which stays a live H5 read.
+#: (source, target) of a LIVE H5 hop -> the flybrains file it reads and the downloader that
+#: fetches it. Keyed on the hop rather than on the region, because which hops stay live is a
+#: property of how far each connectome's field was baked: BANC bakes to the F templates and
+#: leaves the F -> U tail live, while maleCNS bakes all the way to U and needs none of this.
 H5_DEPS = {
-    'brain': ('JRC2018U_JRC2018F.h5', 'download_jrc_transforms'),
-    'vnc': ('JRCVNC2018U_JRCVNC2018F.h5', 'download_jrc_vnc_transforms'),
+    ('JRC2018F', 'JRC2018U'): ('JRC2018U_JRC2018F.h5', 'download_jrc_transforms'),
+    ('JRCVNC2018F', 'JRCVNC2018U'): ('JRCVNC2018U_JRCVNC2018F.h5',
+                                     'download_jrc_vnc_transforms'),
 }
 
 
-def ensure_h5(regions, download=True):
-    """Make sure the tail-hop H5 files are on this machine.
+def h5_needed(cx, regions):
+    """The H5 dependencies the declared chains actually read, deduplicated."""
+    need = {}
+    for name in regions:
+        for hop in cx.region(name).hops(use_baked=True):
+            if hop.baked:
+                continue
+            dep = H5_DEPS.get((hop.source, hop.target))
+            if dep:
+                need[dep] = f'{name}: {hop}'
+    return need
 
-    The old maleCNS job called `download_jrc_transforms()` / `download_jrc_vnc_transforms()`
-    unconditionally at startup; without something equivalent a fresh agent with an empty
-    `$FLYBRAINS_DATA` fails on the first neuron instead of at preflight. Only the regions
-    actually being processed are fetched: a brain-only run has no need for the VNC set,
-    which includes a 1 GB `JRCVNC2018M_MANC.h5` we never touch.
+
+def ensure_h5(cx, regions, download=True):
+    """Make sure every live H5 hop's registration is on this machine.
+
+    Without something equivalent a fresh agent with an empty `$FLYBRAINS_DATA` fails on the
+    first neuron instead of at preflight. Only what the selected regions actually read is
+    fetched: a brain-only BANC run has no need for the VNC set, which includes a 1 GB
+    `JRCVNC2018M_MANC.h5` we never touch — and a maleCNS run needs nothing at all.
     """
     import flybrains
     from flybrains.download import get_data_home
+    need = h5_needed(cx, regions)
+    if not need:
+        print(f'h5: none needed — {cx.id} chains are baked end to end')
+        return
     home = get_data_home()
-    for region in regions:
-        fname, fn = H5_DEPS[region]
+    for (fname, fn), why in need.items():
         path = os.path.join(home, fname)
         if os.path.exists(path):
-            print(f'h5 for {region}: {path} ({os.path.getsize(path) / 1e6:.0f} MB)')
+            print(f'h5 [{why}]: {path} ({os.path.getsize(path) / 1e6:.0f} MB)')
             continue
         if not download:
             raise SystemExit(
-                f'{fname} not found in {home} and --no-download was given. The '
-                f'{region} tail hop cannot run. Fetch it with '
-                f'flybrains.{fn}() or set $FLYBRAINS_DATA.')
-        print(f'h5 for {region}: {fname} absent — downloading via flybrains.{fn}()',
+                f'{fname} not found in {home} and --no-download was given. The hop '
+                f'[{why}] cannot run. Fetch it with flybrains.{fn}() or set '
+                f'$FLYBRAINS_DATA.')
+        print(f'h5 [{why}]: {fname} absent — downloading via flybrains.{fn}()',
               flush=True)
         getattr(flybrains, fn)()
         if not os.path.exists(path):
@@ -1113,42 +1232,58 @@ def preflight(args, regions):
     """
     import flybrains
     import navis
-    from vfb_connectomics_import.images import transforms as banc_baked
+    from vfb_connectomics_import.images import transforms as baked
     navis.set_pbars(hide=True)
     hush_navis()
     check_deps()
+    cx = connectomes.get(args.connectome)
+    print(f'connectome: {cx.id} — {cx.label}  (DataSet {cx.dataset}, Site {cx.site}, '
+          f'space {cx.space}/{cx.units})')
+    print(f'mesh sizing: ' + ('ladder ' + str(cx.ladder.rungs) + f' — {cx.ladder.calibrated_from}'
+                              if cx.ladder else f'no ladder; decimate to {args.mesh_density} f/um2'))
 
     # 1. Cheapest check first. Locating our own fields is an instant stat; the H5 step
     #    below may download 717 MB. Checking in the other order meant a misconfigured
     #    agent paid for the download and *then* failed.
-    d, how = banc_baked.resolve_field_dir(args.field_dir)
+    d, how = baked.resolve_field_dir(args.field_dir)
     print(f'baked fields: {d}  (chosen by {how})', flush=True)
-    absent = banc_baked.missing_fields(args.field_dir)
-    if absent:
-        raise banc_baked._missing_error(args.field_dir)
 
     # 2. Now the possibly-expensive one. flybrains only registers an H5 edge for a file
     #    that exists, so register_transforms() has to run AFTER any download or the
-    #    path assertion in step 3 would find no route at all.
-    ensure_h5(regions, download=not args.no_download)
+    #    chain resolution in step 3 would find no edge at all.
+    ensure_h5(cx, regions, download=not args.no_download)
     flybrains.register_transforms()
 
-    # 3. Full check: fields load, reject out-of-domain, and elastix is out of the path.
-    banc_baked.register(field_dir=args.field_dir, mmap=not args.no_mmap,
-                        verbose=True)
-    banc_baked.self_check(field_dir=args.field_dir, verbose=True)
+    # 3. Resolve each declared chain for real. This is the whole preflight: every hop is
+    #    looked up as a NAMED edge of a declared type and every baked field is opened and
+    #    its sidecar checked against the hop it claims to be, so a missing field, a
+    #    retyped flybrains edge or a field built against the wrong target all fail here
+    #    rather than on the first neuron. `transforms.register()` is deliberately NOT
+    #    called: nothing needs the fields in the global graph, and putting them there
+    #    perturbs routing for every other dataset in the process (docs/ISSUES.md CODE-1).
+    for name in regions:
+        _seq_, desc = chain.resolve(cx.region(name), field_dir=args.field_dir,
+                                    mmap=not args.no_mmap)
+        print(f'chain [{name} -> {cx.region(name).template.name}]:')
+        for line in desc:
+            print(f'    {line}')
+        cut = cx.region(name).cut
+        print(f'    cut: {"xyz"[cut.axis]} {"<" if cut.keep < 0 else ">"} {cut.at:,.0f} '
+              f'{cx.units}  ({cut.derived_from})')
+        del _seq_
 
     if args.skeleton_dir and os.path.isdir(args.skeleton_dir):
+        expected = sources.SOURCES[cx.id].EXPECTED_SWC
         n = len([f for f in os.listdir(args.skeleton_dir) if f.endswith('.swc')])
-        pct = 100.0 * n / EXPECTED_SWC
+        pct = 100.0 * n / expected
         print(f'staged skeletons: {args.skeleton_dir} ({n:,} files, '
-              f'{pct:.1f}% of the expected {EXPECTED_SWC:,})')
-        if n < 0.95 * EXPECTED_SWC:
+              f'{pct:.1f}% of the expected {expected:,})')
+        if n < 0.95 * expected:
             # A staged dir is authoritative — a miss does NOT fall back to the bucket, it
             # falls through to skeletonising the mesh. So a half-finished rsync silently
             # downgrades published skeletons instead of failing, which is worth shouting
             # about rather than printing a number nobody reads.
-            print(f'  *** WARNING: the mirror looks INCOMPLETE ({EXPECTED_SWC - n:,} '
+            print(f'  *** WARNING: the mirror looks INCOMPLETE ({expected - n:,} '
                   f'files short). A staged directory is treated as authoritative: '
                   f'missing files do NOT fall back to the bucket, they fall through to '
                   f'skeletonising the mesh. Finish the rsync, or unset --skeleton-dir to '
@@ -1185,9 +1320,16 @@ def neuron_line(rec, write_root):
             # decimated: show both, so the log alone answers "was this reduced?"
             faces = f'{rec["faces"]}->{obj}f'
         bits.append(f'{rec["nodes"]}n/{faces}')
-    detail = (' '.join(bits) or rec['note'])[:40]
+    # Which rung was served, and at what density. On a ladder dataset this is the only
+    # place the choice appears in the console log, and it is the thing to grep for when a
+    # neuron looks too coarse.
+    if rec.get('obj_lod') is not None:
+        bits.append(f'lod{rec["obj_lod"]}'
+                    + (f'@{rec["obj_f_per_um2"]:.0f}f/um2' if rec.get('obj_f_per_um2') else '')
+                    + ('*' if rec.get('obj_decimated') else ''))
+    detail = (' '.join(bits) or rec['note'])[:52]
     return (f'  {rec["status"]:16s} {rec["root"]:20s} {rec["region"]:5s} '
-            f'{rec["seconds"]:5.1f}s  {detail:34s} '
+            f'{rec["seconds"]:5.1f}s  {detail:52s} '
             f'{to_url(rec["folder"], write_root)}')
 
 
@@ -1227,7 +1369,7 @@ def summarise(recs, elapsed, workers, report_path=None):
         dec = df[df.obj_faces.notna() & (df.obj_faces < df.faces)]
         n_obj = int(df.obj_faces.notna().sum())
         print(f'\n  OBJ decimation: {len(dec):,} of {n_obj:,} written meshes reduced '
-              f'(the rest were under the {MESH_BUDGET_MB} MB wire budget)')
+              f'(the rest needed no reduction)')
         if len(dec):
             print(f'    median {dec.faces.median():,.0f} -> {dec.obj_faces.median():,.0f} '
                   f'faces  ({100 * (1 - dec.obj_faces.sum() / dec.faces.sum()):.0f}% of '
@@ -1266,10 +1408,13 @@ def main(argv=None):
         return 0
 
     settings = Settings(
+        connectome=args.connectome,
         products=products, mode=args.mode,
         delete_spurious=not args.no_delete_spurious,
         min_nodes=args.min_nodes, min_faces=args.min_faces,
-        mesh_density=args.mesh_density, mesh_budget_mb=args.mesh_budget_mb,
+        mesh_density=args.mesh_density,
+        budget=sizing.Budget(max_mb=args.mesh_budget_mb, skip_mb=args.mesh_skip_mb,
+                             ceiling_f_per_um2=args.mesh_ceiling),
         field_dir=args.field_dir, skeleton_dir=args.skeleton_dir,
         archive_dir=args.archive, mmap=not args.no_mmap)
 

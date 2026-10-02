@@ -37,6 +37,8 @@ from typing import Optional, Sequence, Tuple
 
 import numpy as np
 
+from vfb_connectomics_import.images.sizing import Ladder
+
 
 # ------------------------------------------------------------------------------ templates
 @dataclass(frozen=True)
@@ -190,6 +192,9 @@ class Connectome:
     regions: dict
     #: full source volume bounds in `units`, used to clamp a baked grid to real data
     volume: Optional[Tuple[Tuple[float, float, float], Tuple[float, float, float]]] = None
+    #: the publisher's LOD ladder, calibrated in TEMPLATE space. None means they ship one
+    #: resolution and the OBJ has to be decimated instead -- see images/sizing.py.
+    ladder: Optional[Ladder] = None
     notes: str = ''
 
     def region(self, name):
@@ -212,6 +217,10 @@ BANC = Connectome(
     dataset='Bates2026', site='BANC888',
     space='BANC', units='nm',
     volume=((79342., 35563., 43.), (966128., 1131156., 315520.)),   # flybrains.BANC.boundingbox
+    # No ladder: the mesh layer publishes LOD 0 only, so there is nothing to choose
+    # between and every oversized BANC OBJ is decimated by us. Confirmed 2026-09-16 --
+    # the `info` for gs://.../neuron_meshes is not neuroglancer_multilod_draco.
+    ladder=None,
     regions={
         'brain': Region(
             name='brain', template=TEMPLATES['JRC2018U'],
@@ -254,6 +263,18 @@ MALECNS = Connectome(
     dataset='Berg2025a', site='male-cns_v1_0',
     space='JRCFIB2022M', units='nm',
     volume=((0., 0., 0.), (752_704., 626_536., 1_076_608.)),        # 94088x78317x134576 @ 8 nm
+    # Four rungs at scales 1/2/4/8, `neuroglancer_multilod_draco`. Densities are faces per
+    # TEMPLATE-space um2 -- maleCNS source-space area is 1.78x template-space area, so a
+    # source-space figure compares to nothing in docs/ISSUES.md. lod2/lod3 are medians over
+    # 100 strided neurons (spread 1.44x / 1.60x p5-p95, no drift against size, so one
+    # constant per rung is legitimate); lod1 196 is the figure docs/MESH_SIZING.md predicts
+    # with and is what VFB serves today; lod0 is the APL_R/DL1_adPN_L mean and is above the
+    # 200 f/um2 ceiling, so it is never served. Measured face reduction per step is
+    # 6.7x / 5.8x / 4.85x, not the 7x once guessed in sources.py.
+    ladder=Ladder(density={0: 1292.0, 1: 196.0, 2: 32.2, 3: 6.78},
+                  calibrated_from='100 neurons strided across the 166,701-neuron worklist, '
+                                  '2026-09-16; see docs/MESH_SIZING.md',
+                  expected_lods=4),
     regions={
         'brain': Region(
             name='brain', template=TEMPLATES['JRC2018U'],

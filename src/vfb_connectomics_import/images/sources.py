@@ -38,6 +38,15 @@ class Source:
     def mesh(self, ident, lod=0):
         raise NotImplementedError
 
+    def coarse_skeleton(self, ident):
+        """A low-resolution skeleton to fall back on, or None if the dataset has none.
+
+        Only BANC has one (`_l2`, ~125x coarser than its published `_skeleton`), and it is
+        the last resort: skeletonising the mesh beats it 20-27x on node count, so the
+        loader only reaches here when skeletonisation itself failed.
+        """
+        return None
+
 
 # --------------------------------------------------------------------------------- BANC
 class BancBucket(Source):
@@ -50,6 +59,9 @@ class BancBucket(Source):
     BUCKET = 'lee-lab_brain-and-nerve-cord-fly-connectome'
     SWC_PREFIX = 'compiled_data/banc_888/banc_banc_space_swc'
     MESH_LAYER = 'neuron_meshes'
+    #: SWC files in banc_banc_space_swc/ as of 2026-08-25 — 108,483 `_skeleton` + 76,797
+    #: `_l2`, mutually exclusive. Used only to judge whether a staged mirror is complete.
+    EXPECTED_SWC = 185_280
 
     def __init__(self, skeleton_dir=None):
         self.skeleton_dir = skeleton_dir
@@ -74,6 +86,9 @@ class BancBucket(Source):
 
     def skeleton(self, ident):
         return self.swc(ident, 'skeleton')
+
+    def coarse_skeleton(self, ident):
+        return self.swc(ident, 'l2')
 
     def mesh(self, ident, lod=0):
         """BANC publishes LOD 0 only, so `lod` is accepted and ignored."""
@@ -110,6 +125,8 @@ class MaleCnsBucket(Source):
     BUCKET = 'flyem-male-cns'
     LAYER = 'v1.0/segmentation'
     VOXEL_NM = 8.0
+    #: SWC files in skeletons-swc/ as of 2026-08-28; more segments than VFB imports.
+    EXPECTED_SWC = 211_573
 
     def __init__(self, skeleton_dir=None, swc_variant='skeletons-swc'):
         self.skeleton_dir = skeleton_dir

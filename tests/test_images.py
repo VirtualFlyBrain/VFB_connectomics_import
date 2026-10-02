@@ -285,28 +285,71 @@ def test_error_is_not_terminal():
 # ----------------------------------------------------------------------------- geometry
 def test_region_bounds_match_the_vfb_template_grids():
     """Read from the template NRRD headers on the VFB file server. The maleCNS script's
-    constants (627.3695649, 293.1875965, 173) decode as exactly (grid - 1) * spacing."""
-    from vfb_connectomics_import.images import loader as L
-    brain = L.REGIONS['brain'].bounds
+    constants (627.3695649, 293.1875965, 173) decode as exactly (grid - 1) * spacing.
+
+    The templates belong to VFB, not to any one connectome, so both datasets' regions must
+    resolve to the same bounds — writing one dataset onto a differently-sized grid would
+    misalign it against everything already served there.
+    """
+    from vfb_connectomics_import.images import connectomes as C
+    brain = C.TEMPLATES['JRC2018U'].bounds
     assert abs(brain[0][1] - 627.3695649) < 1e-6
     assert abs(brain[1][1] - 293.1875965) < 1e-6
     assert abs(brain[2][1] - 173.0) < 1e-9
-    vnc = L.REGIONS['vnc'].bounds
+    vnc = C.TEMPLATES['JRCVNC2018U'].bounds
     assert [round(b[1], 4) for b in vnc] == [263.6, 515.6, 152.4]
+    for cx in C.CONNECTOMES.values():
+        assert cx.region('brain').bb().tolist() == C.TEMPLATES['JRC2018U'].bb().tolist()
+        assert cx.region('vnc').bb().tolist() == C.TEMPLATES['JRCVNC2018U'].bb().tolist()
 
 
 def test_cut_keeps_the_right_side_of_the_neuropil_boundary():
-    """brain y < 305,801; vnc y > 549,946. The 244 um of connective between them is
-    dropped from both halves (ISSUES.md IMG-3)."""
+    """BANC separates on y, maleCNS on z, and each drops the connective from BOTH halves.
+
+    The gap is the point (ISSUES.md IMG-3): registration support runs well past each
+    neuropil with no anatomy to constrain it, so material in between warps into
+    coordinates that *pass* a bbox check. A cut that merely split the neuron in two would
+    reintroduce exactly the bug this exists to prevent.
+    """
     import numpy as np
+    from vfb_connectomics_import.images import connectomes as C
     from vfb_connectomics_import.images import loader as L
-    ys = [100_000, 305_800, 400_000, 549_947, 900_000]      # nm
-    arr = np.zeros((len(ys), 7))
-    arr[:, 3] = ys
-    assert L.REGIONS['brain'].cut_swc(arr)[:, 3].tolist() == [100_000, 305_800]
-    assert L.REGIONS['vnc'].cut_swc(arr)[:, 3].tolist() == [549_947, 900_000]
-    kept = set(L.REGIONS['brain'].cut_swc(arr)[:, 3]) | set(L.REGIONS['vnc'].cut_swc(arr)[:, 3])
-    assert 400_000 not in kept, 'connective material must be in neither half'
+
+    # (connectome, swc column the cut reads, below / inside-the-gap / above)
+    cases = [(C.BANC, 3, 100_000, 400_000, 900_000),
+             (C.MALECNS, 4, 100_000, 400_000, 900_000)]
+    for cx, col, below, gap, above in cases:
+        arr = np.zeros((3, 7))
+        arr[:, col] = [below, gap, above]
+        brain = L.cut_swc(arr, cx.region('brain').cut)
+        vnc = L.cut_swc(arr, cx.region('vnc').cut)
+        assert brain[:, col].tolist() == [below], cx.id
+        assert vnc[:, col].tolist() == [above], cx.id
+        kept = set(brain[:, col]) | set(vnc[:, col])
+        assert gap not in kept, f'{cx.id}: connective material must be in neither half'
+
+
+def test_the_cut_planes_are_the_ones_that_were_derived():
+    """Guard the four numbers the whole rebuild rests on, with their provenance."""
+    from vfb_connectomics_import.images import connectomes as C
+    assert (C.BANC.region('brain').cut.axis, C.BANC.region('brain').cut.at) == (1, 305_801.0)
+    assert (C.BANC.region('vnc').cut.axis, C.BANC.region('vnc').cut.at) == (1, 549_946.0)
+    assert (C.MALECNS.region('brain').cut.axis,
+            C.MALECNS.region('brain').cut.at) == (2, 340_544.0)
+    assert (C.MALECNS.region('vnc').cut.axis,
+            C.MALECNS.region('vnc').cut.at) == (2, 527_616.0)
+    for cx in C.CONNECTOMES.values():
+        for name in ('brain', 'vnc'):
+            assert cx.region(name).cut.derived_from, f'{cx.id}/{name} has no provenance'
+
+
+def test_only_malecns_has_a_ladder():
+    """BANC publishes LOD 0 only, so it must fall through to decimation."""
+    from vfb_connectomics_import.images import connectomes as C
+    assert C.BANC.ladder is None
+    assert C.MALECNS.ladder is not None
+    assert C.MALECNS.ladder.rungs == (0, 1, 2, 3)
+    assert C.MALECNS.ladder.calibrated_from
 
 
 def test_to_url_round_trips_to_local():
