@@ -1407,6 +1407,21 @@ def main(argv=None):
         raise SystemExit(f'unknown product(s): {sorted(unknown)}')
     regions = ['brain', 'vnc'] if args.region == 'both' else [args.region]
 
+    # `--mesh-budget-mb` CHANGED MEANING. It used to be the "already small enough, leave it
+    # alone" threshold (default 4); it is now the hard cap on a served OBJ (default 20), and
+    # the old sense moved to `--mesh-skip-mb`. An existing Jenkins invocation passing the old
+    # default would therefore set a 4 MB cap and quietly decimate every BANC mesh over
+    # ~444k faces. Nobody wants a cap at or below the skip threshold, so treat it as the
+    # old spelling and fail rather than silently serve coarser images across 146k neurons.
+    if args.mesh_budget_mb <= args.mesh_skip_mb:
+        raise SystemExit(
+            f'--mesh-budget-mb {args.mesh_budget_mb} is at or below --mesh-skip-mb '
+            f'{args.mesh_skip_mb}, which is almost certainly the old meaning of the flag.\n'
+            f'  It is now the HARD CAP on a served OBJ (default '
+            f'{sizing.Budget.max_mb} MB), not the "leave it alone" threshold.\n'
+            f'  The old sense is --mesh-skip-mb (default {sizing.Budget.skip_mb} MB).\n'
+            f'  Drop the flag to take the defaults, or set both explicitly.')
+
     preflight(args, regions)
     tasks = build_tasks(args, regions)
     print(f'to process: {len(tasks):,}   products={products}   mode={args.mode}   '

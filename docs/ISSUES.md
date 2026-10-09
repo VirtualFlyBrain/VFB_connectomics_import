@@ -241,7 +241,8 @@ Full working spec, rejected alternatives, reproduction recipe and implementation
 
 **Implemented** for BANC in `images/loader.py`: `MESH_DENSITY = 37.0`,
 `MESH_BUDGET_MB = 4.0`, `OBJ_DP = 3`, `decimate_mesh()` / `write_obj()`, exposed as
-`--mesh-density` / `--mesh-budget-mb` (`--mesh-density 0` disables). A mesh already under
+`--mesh-density` / `--mesh-skip-mb` / `--mesh-budget-mb` (`--mesh-density 0` disables the
+density target; the budget still binds). A mesh already under
 the budget is left alone — most BANC neurons are a few MB and there is no reason to spend
 fidelity on them. The NRRD deliberately keeps the full-res mesh: it voxelises onto a
 ~0.5 µm grid, so it neither gains from the fine mesh nor suffers from the coarse one.
