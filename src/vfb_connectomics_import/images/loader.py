@@ -318,12 +318,17 @@ class Sources:
     #: it is here to measure surface area cheaply, not to be served. `size_mesh()` fetches
     #: the rung that actually gets written.
     mesh_lod: Optional[int] = None
+    #: whether a mesh was ever fetched, as opposed to whether one is still held. `process()`
+    #: drops `mesh` before `decide()` runs to free the largest allocation in the loader, and
+    #: `usable` must not change when it does — otherwise saving memory silently reclassifies
+    #: a mesh-only neuron as `no_source` and skips its write.
+    mesh_fetched: bool = False
 
     @property
     def usable(self):
         """False means we have no basis for judging this neuron — and therefore no right
         to delete anything (see decide())."""
-        return self.mesh is not None or self.swc is not None
+        return self.mesh_fetched or self.swc is not None
 
 
 def probe_lod(cx):
@@ -353,9 +358,11 @@ def load_sources(ident):
                        (src.coarse_skeleton(ident), 'published_coarse')):
         if arr is not None and len(arr) > 1:
             return Sources(mesh=mesh, swc=arr, swc_source=label,
-                           mesh_lod=lod if mesh is not None else None)
+                           mesh_lod=lod if mesh is not None else None,
+                           mesh_fetched=mesh is not None)
     return Sources(mesh=mesh, swc=None, swc_source='none',
-                   mesh_lod=lod if mesh is not None else None)
+                   mesh_lod=lod if mesh is not None else None,
+                   mesh_fetched=mesh is not None)
 
 
 def as_mesh_neuron(tm, name):
@@ -539,7 +546,16 @@ def size_mesh(ident, region, probe, st, rec):
     finest = sizing.admissible(cx.ladder, budget)[0]
     got = transform_mesh(_W.src.mesh(ident, lod=finest), region)
     if got is None:
-        return None, 'no rung yielded anything here'
+        # The probe proved there IS material here, so every rung coming back empty is a
+        # fetch failure, not a finding. `sources.mesh()` swallows exceptions and returns
+        # None (coverage is genuinely patchy, IMG-4), so this is the only place the
+        # difference can be drawn — and getting it wrong means `decide()` sees an empty
+        # region with a usable source and deletes a correct image over a transient 503.
+        # Raising makes the task retry; `error` is deliberately not terminal.
+        raise RuntimeError(
+            f'{ident}/{region.name}: the probe mesh (lod{probe_lod(cx)}) has material here '
+            f'but no rung of the ladder returned any — treating this as a fetch failure, '
+            f'not as an empty region. Tried: {" ".join(tried) or "none"}')
     before = len(got.faces)
     got = _decimate_to(got, sizing.decimate_target(
         before, area, budget.ceiling_f_per_um2, budget))
@@ -629,8 +645,8 @@ def write_nrrd(obj, region, path):
     ~119 MB as uint8 — roughly 250-350 MB peak per worker, and the single largest
     allocation in this loader. Size worker count against that, not against the meshes.
     """
-    vx = _W.navis.voxelize(obj, pitch=[f'{s} microns' for s in region.spacing],
-                           bounds=region.bounds, parallel=False)
+    vx = _W.navis.voxelize(obj, pitch=[f'{s} microns' for s in region.template.spacing],
+                           bounds=region.template.bounds, parallel=False)
     vx.grid = vx.grid.astype('uint8') * 255
     _W.navis.write_nrrd(vx, filepath=path, compression_level=9)
     del vx
@@ -764,7 +780,7 @@ def process(task):
         sources = load_sources(root)
         rec['swc_source'] = sources.swc_source
         halves = build_halves(sources, region)
-        del sources.mesh                     # the probe; the big allocation, drop it early
+        sources.mesh = None                  # the probe; the big allocation, drop it early
 
         # Choose the rung to serve, if this dataset ships a ladder. Done BEFORE decide()
         # so materiality is judged on the mesh that would actually be written, not on the
