@@ -1021,14 +1021,78 @@ def log_selection(tasks, how, cap=200):
 
 
 # ------------------------------------------------------------------------------------ main
+def connectome_help():
+    """The `--connectome` table, rendered from the registry so it cannot drift from it.
+
+    Generated rather than written out because a stale table in `--help` is worse than none:
+    it is exactly where someone looks to confirm which DataSet a run will touch.
+    """
+    rows = []
+    for cid in sorted(connectomes.CONNECTOMES):
+        cx = connectomes.get(cid)
+        ladder = (f'lod {min(cx.ladder.rungs)}-{max(cx.ladder.rungs)}' if cx.ladder
+                  else 'none (we decimate)')
+        baked = sorted({r.bake.stem for r in cx.regions.values() if r.bake})
+        rows.append((cx.id, cx.dataset, cx.site, f'{cx.space} ({cx.units})', ladder,
+                     ', '.join(baked) or 'none'))
+    w = [max(len(r[i]) for r in rows + [('id', 'KB DataSet', 'KB Site', 'source space',
+                                         'LOD ladder', 'baked fields')]) for i in range(6)]
+    head = ('id', 'KB DataSet', 'KB Site', 'source space', 'LOD ladder', 'baked fields')
+    out = ['connectomes',
+           '-----------',
+           'The id is a local handle — nothing in the KB is called "banc" or "malecns". The',
+           'DataSet and Site are KB short_forms, and the Site xref accession is the neuron id',
+           'used to fetch geometry. Override either with --dataset / --site.',
+           '',
+           '  ' + '  '.join(h.ljust(w[i]) for i, h in enumerate(head)),
+           '  ' + '  '.join('-' * w[i] for i in range(6))]
+    out += ['  ' + '  '.join(r[i].ljust(w[i]) for i in range(6)) for r in rows]
+    out += [
+        '',
+        'Both write to JRC2018U (brain) and JRCVNC2018U (vnc). Only these two have been run;',
+        'nothing here is dataset-agnostic by accident.',
+        '',
+        'adding another',
+        '--------------',
+        'Four things cannot be inferred and have to be worked out once, then recorded in',
+        'images/connectomes.py next to the two that are already there:',
+        '',
+        '  1. identity      — KB DataSet and Site short_forms, source space and units.',
+        '  2. the cut       — which axis separates brain from VNC in ITS OWN source space,',
+        '                     where the plane sits, and which side each region keeps. Take it',
+        '                     from published neuropil/compartment meshes, not from where the',
+        '                     registration happens to be defined: support is not validity, and',
+        '                     material in the gap warps into coordinates that PASS a bbox check',
+        '                     (docs/ISSUES.md IMG-3). Record where the number came from.',
+        '  3. the chain     — the exact hops to each template, declared. Never searched: a path',
+        '                     search routes a male CNS through a female VNC template without',
+        '                     erroring (CODE-1). Then bake it (images/bake_fields.py) and check',
+        '                     it against the native chain (images/verify_baked.py).',
+        '  4. the geometry  — a Source subclass in images/sources.py returning skeleton() and',
+        '                     mesh() in the connectome\'s own units. Watch the units: maleCNS',
+        '                     SWCs are in 8 nm voxels and everything else is nanometres.',
+        '',
+        'Optionally a Ladder, if the publisher ships multiple LODs — calibrate the density of',
+        'each rung on ~100 neurons in TEMPLATE space (docs/MESH_SIZING.md). Leave it None and',
+        'the OBJ is decimated instead, which is what BANC does.',
+        '',
+        'Then rehearse before the first real build: tools/rehearsal/run.sh runs the whole job',
+        'against a local mirror of the live images, so deletion and archiving execute for real',
+        'with nothing at risk.']
+    return '\n'.join(out)
+
+
 def parse_args(argv=None):
     ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+        description=__doc__, epilog=connectome_help(),
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--connectome', default=os.environ.get('CONNECTOME', 'banc'),
                     choices=sorted(connectomes.CONNECTOMES),
                     help='which dataset to build. Selects the bucket, the cut planes, the '
-                         'transform chain, the DataSet/Site and the LOD ladder — all of '
-                         'them declared in images/connectomes.py, none of them here.')
+                         'transform chain, the KB DataSet/Site and the LOD ladder — all of '
+                         'them declared in images/connectomes.py, none of them here. See the '
+                         'table at the end of this help for what each id maps to, and what '
+                         'adding another would take.')
     ap.add_argument('--region', default='brain', choices=['brain', 'vnc', 'both'],
                     help='which template(s) to write (default: brain)')
     ap.add_argument('--mode', default='replace', choices=['replace', 'fill'],

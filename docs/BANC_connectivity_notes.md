@@ -8,7 +8,7 @@
 > data server is still v626-derived and needs rebuilding; PDB is still on v626.
 >
 > When rebuilding, **put the version in the output filename** (see
-> [README.md](README.md#artifact-naming-include-the-source-version-todo)) — the
+> [README.md](../README.md#artifact-naming-include-the-source-version-todo)) — the
 > current name records nothing about its source version and it cannot be recovered
 > from the file afterwards.
 

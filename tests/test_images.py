@@ -483,3 +483,25 @@ def test_usability_survives_dropping_the_probe_mesh():
     assert s.usable
     s.mesh = None                       # what process() does to drop the big allocation
     assert s.usable, 'dropping the probe must not make the neuron look unfetchable'
+
+
+def test_the_connectome_help_table_covers_every_registered_connectome():
+    """`--help` is where someone confirms which DataSet a run will touch, so a stale table
+    there is worse than no table. It is generated from the registry rather than written
+    out; this guards that generating it still works and still names everything."""
+    from vfb_connectomics_import.images import connectomes as C
+    from vfb_connectomics_import.images import loader as L
+
+    text = L.connectome_help()
+    for cx in C.CONNECTOMES.values():
+        assert cx.id in text, f'{cx.id} missing from the --connectome table'
+        assert cx.dataset in text, f'{cx.dataset} missing from the --connectome table'
+        assert cx.site in text, f'{cx.site} missing from the --connectome table'
+    # the id is a local handle, and saying so is the point of the table
+    assert 'nothing in the KB is called' in text
+
+
+def test_parse_args_still_builds_with_the_generated_epilog():
+    from vfb_connectomics_import.images import loader as L
+    args = L.parse_args(['--connectome', 'malecns', '--region', 'both'])
+    assert (args.connectome, args.region) == ('malecns', 'both')

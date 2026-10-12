@@ -69,8 +69,8 @@ per point. On a 598k-vertex mesh that is 5.9 s, **92% of the whole chain**.
 
 ## The baked fields
 
-Built by [`src/vfb_connectomics_import/images/bake_fields.py`](src/vfb_connectomics_import/images/bake_fields.py),
-consumed by [`banc_baked.py`](src/vfb_connectomics_import/images/transforms.py).
+Built by [`src/vfb_connectomics_import/images/bake_fields.py`](../src/vfb_connectomics_import/images/bake_fields.py),
+consumed by [`banc_baked.py`](../src/vfb_connectomics_import/images/transforms.py).
 
 | | grid | spacing | size |
 |---|---|---|---|

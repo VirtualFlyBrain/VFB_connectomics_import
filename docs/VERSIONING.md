@@ -136,7 +136,7 @@ identity tractable.
   comparing VFB Site accessions suggested 0% churn; the published table said 39%.)
 - **Do not read a version from a file's mtime.** BANC's n2n OWL was dated 17-Aug-2026 but
   built from v626 data — two months newer than the newest input in this repo. See
-  [`README.md`](README.md#artifact-naming-include-the-source-version-todo).
+  [`README.md`](../README.md#artifact-naming-include-the-source-version-todo).
 - **KB and PDB do not spell `short_form`s identically** (KB `male-cns_v1_0`, PDB
   `male_cns_v1_0`), and PDB lags the KB by a release. Curation state is a KB question;
   "is it live" is a PDB question.

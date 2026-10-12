@@ -9,51 +9,72 @@ A colour-coded, always-current matrix of every connectome import — stage, vers
 and whether it's live in the release. Rebuilt automatically (nightly + on push).
 How it works and how to extend it: [`dashboard/`](dashboard/).
 
-## 🪰 BANC images (Bates2026 / v888)
+## 🪰 EM neuron images
 
-Writes `volume.swc`, `volume_man.obj` and `volume.nrrd` onto the VFB templates for the
-146,511 BANC v888 neurons. Runs on Jenkins as `load-banc-neurons`; the code is
-[`src/vfb_connectomics_import/images/`](src/vfb_connectomics_import/images/).
+Writes `volume.swc`, `volume_man.obj` and `volume.nrrd` onto the VFB templates for a whole
+connectome. `--connectome` selects the dataset; everything that differs between them —
+the bucket, the cut planes, the transform chain, the DataSet/Site and the LOD ladder — is
+declared in [`images/connectomes.py`](src/vfb_connectomics_import/images/connectomes.py),
+not in the job. Adding a dataset is a change there.
+
+| | neurons | status |
+|---|---|---|
+| `banc` — BANC v888 (`Bates2026`) | 146,511 | live, Jenkins `load-banc-neurons` |
+| `malecns` — male-CNS v1.0 (`Berg2025a`) | 166,701 | ready to run — see [`docs/MALECNS_REBUILD.md`](docs/MALECNS_REBUILD.md) |
 
 ```bash
-export BANC_FIELD_DIR=/nas/.../banc_transform_fields   # the baked transforms, 543 MB
-export KB_USER=... KB_PASSWORD=...                     # KB only; v888 is not in pdb
+export IMAGE_FIELD_DIR=/nas/.../malecns_transform_fields   # baked transforms, one dir per connectome
+export KB_USER=... KB_PASSWORD=...                         # KB only; neither v888 nor v1.0 is in pdb
 pip install -e ".[images]"
-python -m vfb_connectomics_import.images.loader --region brain --ledger run.jsonl
+vfb-em-images --connectome malecns --region both --ledger run.jsonl
 ```
 
-**Two things you must set**: `$BANC_FIELD_DIR` (the pre-baked BANC→JRC2018F fields — the
-preflight prints which of three sources it resolved and fails in seconds if wrong) and KB
-credentials. `$FLYBRAINS_DATA` holds the JRC2018F→JRC2018U H5 tail hop and is fetched
-automatically if absent. Nothing per-neuron touches an authenticated service — the geometry
-is anonymous HTTPS from BANC's public bucket.
+**Two things you must set**: `$IMAGE_FIELD_DIR` (the baked fields — preflight prints which
+of three sources it resolved and fails in seconds if wrong) and KB credentials. BANC also
+needs `$FLYBRAINS_DATA` for its JRC2018F→JRC2018U H5 tail hop, fetched automatically if
+absent; maleCNS is baked end to end and reads no H5 at all. Nothing per-neuron touches an
+authenticated service — all geometry is anonymous HTTPS from a public bucket.
+(`$BANC_FIELD_DIR`, `$BANC_SWC_DIR` and `vfb-banc-images` all still work, so existing BANC
+jobs are unaffected.)
 
-**It replaces in place, one neuron at a time.** Almost every neuron already has a v626-era
-image. The complete new set is built to `volume.partial.*` and swapped in with `os.replace`,
-so a served file goes straight from old to new and is never briefly absent. On any failure
-the partials are discarded and the old image keeps serving. The job can therefore be stopped
-at any moment without leaving the site broken — which is why its speed does not much matter.
+**It replaces in place, one neuron at a time.** Almost every neuron already has an image.
+The complete new set is built to `volume.partial.*` and swapped in with `os.replace`, so a
+served file goes straight from old to new and is never briefly absent. On any failure the
+partials are discarded and the old image keeps serving. The job can therefore be stopped at
+any moment without leaving the site broken — which is why its speed does not much matter.
 
 **`--ledger` is required**, not optional: file existence cannot indicate progress when
 almost every neuron already has files. It is the only record of where a run got to, and
-`error` is never recorded as terminal, so failures retry themselves next build.
+`error` is never recorded as terminal, so failures retry themselves next build. Give each
+connectome, region and shard its own.
 
 **It deletes images too.** When a rebuild finds no depictable material in a region *and* a
 usable source was available, the image there is spurious and is removed — that is the only
-thing that cleans up the ~4,660 wrong-template BANC images of IMG-3. With **no** usable
-source nothing is deleted, because absent input is not evidence (upstream mesh coverage is
-94.4%/68.8%). Beyond the three products it writes it also deletes `volume.obj` and `volume.dps.pkl` —
-the latter because NBLAST only refreshes its combined cache when a neuron's dotprops have
-changed, so a stale one would freeze the old shape there. `volume.wlz` and thumbnails are
-left for the jobs that own them.
+thing that cleans up BANC's ~4,660 wrong-template images (IMG-3), and maleCNS's ~161,000
+uncut duplicates (IMG-2). With **no** usable source nothing is deleted, because absent input
+is not evidence: upstream mesh coverage is only 94.4%/68.8%, and a transient fetch failure
+raises rather than being read as "nothing here". Beyond the three products it writes it also
+deletes `volume.obj` and `volume.dps.pkl` — the latter because NBLAST only refreshes its
+combined cache when a neuron's dotprops have changed, so a stale one would freeze the old
+shape there. `volume.wlz` and thumbnails are left for the jobs that own them.
 
-`--region vnc` does the VNC half. `--limit N` takes a test batch and logs exactly which
-neurons; `--archive DIR` keeps the pre-replacement images so
-`python -m vfb_connectomics_import.images.compare` can render old-vs-new 3D pages.
-Tests: `python tests/test_images.py` (25, no network or navis needed).
+**Mesh size.** Where the publisher ships an LOD ladder we pick one of their rungs and serve
+their geometry unaltered; where they do not (BANC, LOD 0 only) we decimate. Both the wire
+budget and the density ceiling are enforced on the face count that actually arrives, never
+on the prediction. See [`docs/MESH_SIZING.md`](docs/MESH_SIZING.md). Note `--mesh-budget-mb`
+is now the hard **cap** (default 20 MB); the old "leave it alone" sense is `--mesh-skip-mb`.
 
-Detail lives in [`docs/TRANSFORMS.md`](docs/TRANSFORMS.md) (transform paths, staging, the
-`use_https` trap) and [`docs/ISSUES.md`](docs/ISSUES.md) (IMG-1 mesh size, IMG-3 spurious
+`--region both` does both templates in one pass. `--limit N` takes a test batch and logs
+exactly which neurons; `--shard i --of n` splits an array job; `--archive DIR` keeps the
+pre-replacement images so `vfb-banc-compare` can render old-vs-new 3D pages, and is a
+verified undo. `tools/rehearsal/run.sh` rehearses a destructive run against a local mirror
+of the live images, so deletion and archiving execute for real with nothing at risk — run it
+before any dataset's first real build. Tests: `pytest tests/` (54, no network needed).
+
+Detail lives in [`docs/MALECNS_REBUILD.md`](docs/MALECNS_REBUILD.md) (the live piece of
+work), [`docs/TRANSFORMS.md`](docs/TRANSFORMS.md) (transform paths, staging, the
+`use_https` trap), [`docs/MESH_SIZING.md`](docs/MESH_SIZING.md) (which rung, or decimate)
+and [`docs/ISSUES.md`](docs/ISSUES.md) (IMG-1 mesh size, IMG-2 uncut maleCNS, IMG-3 spurious
 images, IMG-4 the missing-image gap).
 
 ## 🧭 Transforms
@@ -68,13 +89,22 @@ and its accuracy, and the deployment shape. Read it before changing any `xform_b
 **[`ISSUES.md`](docs/ISSUES.md)** — cross-cutting defects in the loaded data and the import code,
 with evidence and fix direction. The dashboard tracks *stage progress* ("has n2n been
 built?"); this tracks *correctness* ("is what we built right?"). Currently topped by
-**IMG-1**: served OBJ meshes reach 626 MB for a single neuron and take minutes to load,
-across every EM connectome.
+**IMG-2**: maleCNS writes the whole neuron into *both* templates uncut, so ~161,000 of its
+333,402 image folders hold a file that should not exist — and by **IMG-1**, served OBJ
+meshes reaching 626 MB for a single neuron, across every EM connectome. The fix for both is
+built and verified; see [`docs/MALECNS_REBUILD.md`](docs/MALECNS_REBUILD.md).
 
 ## 🔻 Before changing how meshes are written
 
-Read **[`DECIMATION.md`](docs/DECIMATION.md)**. It is the working spec for IMG-1 — *measured and
-settled, implemented for BANC only, never yet run*. The finding it records is not obvious and
+Read **[`MESH_SIZING.md`](docs/MESH_SIZING.md)** first — it settles *whether* to reprocess a
+mesh at all, and the answer is usually no: where a publisher ships an LOD ladder we pick one
+of their rungs and serve their geometry unaltered, because the objective is responsibility
+rather than quality. It is implemented in
+[`images/sizing.py`](src/vfb_connectomics_import/images/sizing.py) and has been run.
+
+Then **[`DECIMATION.md`](docs/DECIMATION.md)**, which settles *how* to decimate when nothing
+the publisher ships fits — today that is BANC alone, which publishes LOD 0 only. The finding
+it records is not obvious and
 was got wrong once in the opposite direction: hemibrain APL and maleCNS APL are the same cell
 with the **same surface area** (62,244 vs 60,334 µm²) and a **5.4× difference in triangle
 count**, so the entire filesize gap is redundant tessellation and hemibrain's 37 faces/µm² is
@@ -110,8 +140,14 @@ painted domains on JRC2018Unisex and 21 on JRC2018UnisexVNC, no auth), and the t
 makes the obvious test misleading: **BANC's own neuropil ROIs are the ITO/COURT/MANC atlases
 registered *into* BANC through the very transform under test**, so round-tripping them
 measures forward∘inverse consistency, not accuracy. maleCNS and MANC ROIs are EM-derived and
-so are not affected. It also ranks four non-circular alternatives, and lists the environment
-blocker (no python on the dev box currently has navis + flybrains).
+so are not affected. It also ranks four non-circular alternatives.
+
+Note what this is *not*: `images/verify_baked.py` compares a baked field against the exact
+multi-hop chain it was built from, and both maleCNS fields pass it comfortably (brain mean
+16.5 nm, VNC 74.8 nm, zero domain disagreement). That proves the bake faithful to the
+registration — it cannot tell you the registration is right, which is what VALIDATION.md is
+for and what remains unrun. The environment blocker it records is resolved; see
+[`docs/TRANSFORMS.md`](docs/TRANSFORMS.md) for the working env.
 
 ## Functional specification
 
