@@ -93,7 +93,7 @@ the KB probes fall back to the `vfb_*` keys when they don't (BANC, e.g., is
 ## ⚠️ Artifact filenames carry no version — and must (TODO)
 
 Generated OWL is named `connectome_BANC_n2n.owl`, `connectome_manc.owl` and so on:
-**no version token** (BANC v888's `connectome_BANC888_n2n.owl` is the first exception). So `owl_index` matches whatever is on the data server and
+**no version token**. BANC v888's `connectome_BANC888_n2n.owl` is the first to carry one, as this section asks. So `owl_index` matches whatever is on the data server and
 reports 🟩 done regardless of which release it was built from. That makes every
 `n2n`/`n2r` cell assert a freshness it cannot actually verify.
 
