@@ -171,6 +171,11 @@ Generated artifacts **must carry the source version in the filename** — use th
     connectome_BANC888_n2n.owl        not  connectome_BANC_n2n.owl
     connectome_male_cns_v1_0_n2n.owl  not  connectome_malecns_n2n.owl
 
+BANC v888 (`connectome_BANC888_n2n.owl`) is the first artifact built this way, with the
+version also in its version IRI and `dc:source` — see
+[`docs/BANC_connectivity_notes.md`](docs/BANC_connectivity_notes.md) and the
+`VERSION_IRI` / `DC_SOURCE` options of `data_owl/chunked_n2n_build.sh`.
+
 Current artifacts do not, and the version is unrecoverable afterwards: the OWL
 contains only `VFB:`/`FBbt:` IDs and `n2o:weight`, so nothing in the file records
 which materialization it came from, and `last-modified` is misleading (the BANC n2n

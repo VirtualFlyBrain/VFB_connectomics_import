@@ -15,3 +15,10 @@ robot template -input-iri http://purl.obolibrary.org/obo/ro.owl --add-prefix "n2
 #   ./chunked_n2n_build.sh ../../../Berg2025_n_2_n.tsv \
 #       ../../../connectome_malecns_1_0_n2n.owl \
 #       http://virtualflybrain.org/data/VFB/OWL/CATMAID_import.owl 2000000
+
+# BANC v888 (see docs/BANC_connectivity_notes.md): ~5.5M rows, so chunked, with the
+# release stamped into the filename, the version IRI and dc:source:
+#   VERSION_IRI=http://virtualflybrain.org/data/VFB/OWL/BANC888_import.owl \
+#   DC_SOURCE="BANC v888 (Site BANC888, .../neuron_connectivity/v888/..._connectioncountsperneuropil.parquet, summed per pair, weight >= 2)" \
+#     ./chunked_n2n_build.sh BANC888_n2n.tsv connectome_BANC888_n2n.owl \
+#       http://virtualflybrain.org/data/VFB/OWL/BANC_import.owl 2000000

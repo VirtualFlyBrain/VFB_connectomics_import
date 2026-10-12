@@ -182,8 +182,10 @@ connectomes:
     label: "BANC"
     provider: gcs
     # TARGET is v888 (KB DataSet Bates2026, Site BANC888 — already is_data_source
-    # there). PDB is still on v626 / Bates2025, so the live dots stay off until
-    # release. KB and PDB spell BANC short_forms identically, so no kb_* overrides.
+    # there). PDB has the v888 neurons (145,943 under Bates2026, checked 2026-10-12)
+    # but their synapsed_to edges are still the v626-derived file: only the 63,959
+    # neurons whose root ids survived from v626 carry any. KB and PDB spell BANC
+    # short_forms identically, so no kb_* overrides.
     version: "888"
     built_version: "626"           # the OWL on the data server is still v626-derived
     vfb_dataset: Bates2026         # v626 was Bates2025; 15,779 of its neurons are dropped in v888
@@ -198,12 +200,13 @@ connectomes:
       # First full brain run started 2026-08-27. --region vnc is the other half.
       skel:    {fill: {type: jenkins, job: "load-banc-neurons"}}
       n2n:
-        # connectome_BANC_n2n.owl is still v626-derived, and its filename carries no
-        # version for owl_index to discriminate on — hence `built_version` above,
-        # which keeps this cell honestly orange until it is rebuilt from the v888
-        # parquet. Bump built_version to 888 when that is done (and consider putting
-        # the version in the OWL filename so owl_index can do this unaided).
-        fill:   {type: owl_index, match: 'connectome_BANC_n2n\.owl'}
+        # connectome_BANC_n2n.owl on the data server is v626-derived, and its filename
+        # carries no version — hence `built_version` above, which keeps this cell
+        # honestly orange. The v888 rebuild is connectome_BANC888_n2n.owl (see
+        # docs/BANC_connectivity_notes.md); once it replaces the old file on the data
+        # server, bump built_version to 888 (or drop it, now the name carries the
+        # version).
+        fill:   {type: owl_index, match: 'connectome_BANC(888)?_n2n\.owl'}
         update: {type: gcs_versions, bucket: lee-lab_brain-and-nerve-cord-fly-connectome, prefix: 'neuron_connectivity/', pattern: 'v(\d+)'}
         live:   {type: pdb_cypher}
       n2r:  {fill: {type: manual, state: not_started}}

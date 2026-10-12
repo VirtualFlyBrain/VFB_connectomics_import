@@ -6,6 +6,10 @@ jsonpath-rw
 pyyaml
 fafbseg
 certifi
+# BANC connectivity: stream the per-neuropil parquet from the public bucket over HTTPS
+pyarrow
+fsspec
+aiohttp
 
 # transform / image pipeline (see TRANSFORMS.md)
 flybrains>=0.6.3      # BANC support arrived in 0.6.x; 0.3.0 has none
