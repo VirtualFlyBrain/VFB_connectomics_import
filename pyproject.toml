@@ -25,6 +25,9 @@ images = [
 
 [project.scripts]
 # Jenkins should call these, not file paths — then a future re-layout breaks nothing.
+vfb-em-images     = "vfb_connectomics_import.images.loader:main"
+# Kept so existing Jenkins jobs keep working. It now takes --connectome and defaults to
+# banc, so an unchanged BANC job behaves exactly as before.
 vfb-banc-images   = "vfb_connectomics_import.images.loader:main"
 vfb-banc-compare  = "vfb_connectomics_import.images.compare:main"
 vfb-banc-bake     = "vfb_connectomics_import.images.bake_fields:main"

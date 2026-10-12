@@ -88,7 +88,7 @@ connectomes:
     kb_site: male-cns_v1_0         # KB spelling; is_data_source already set here
     kb_dataset: Berg2025a
     neuprint_dataset: "male-cns"
-    runner: src/VFB_connectomics_import/script_runner_neuPrint.py
+    runner: src/vfb_connectomics_import/connectivity/cli/neuprint.py
     owner: adm
     stages:
       # Curated in the KB (v1.0 Site is already the data source there); the live
@@ -111,7 +111,7 @@ connectomes:
     version: "1.2.1"
     vfb_site: neuprint_JRC_Manc_1_2_1
     neuprint_dataset: "manc"
-    runner: src/VFB_connectomics_import/MANC_import.py
+    runner: src/vfb_connectomics_import/curation/manc.py
     owner:
     stages:
       dataset: {fill: {type: pdb_dataset}}
@@ -130,7 +130,7 @@ connectomes:
     version: "1.2.1"
     vfb_site: neuprint_JRC_Hemibrain_1point2point1
     neuprint_dataset: "hemibrain"
-    runner: src/VFB_connectomics_import/script_runner_neuPrint.py
+    runner: src/vfb_connectomics_import/connectivity/cli/neuprint.py
     owner:
     stages:
       dataset: {fill: {type: pdb_dataset}}
@@ -140,7 +140,7 @@ connectomes:
         fill:   {type: owl_index, match: 'neuprint_JRC_Hemibrain.*connectomics\.owl'}
         update: {type: neuprint_upstream}
         live:   {type: pdb_cypher}
-      n2r:  {fill: {type: repo_glob, match: 'src/VFB_connectomics_import/tsv/*hb*n2r*'}, live: {type: pdb_cypher}}
+      n2r:  {fill: {type: repo_glob, match: 'src/vfb_connectomics_import/connectivity/data_tsv/*hb*n2r*'}, live: {type: pdb_cypher}}
       types: {fill: {type: manual, state: not_started}}
 
   - id: opticlobe
@@ -149,7 +149,7 @@ connectomes:
     version: "1.0.1"
     vfb_site: neuprint_JRC_OpticLobe_v1_0_1
     neuprint_dataset: "optic-lobe"
-    runner: src/VFB_connectomics_import/OL_import.py
+    runner: src/vfb_connectomics_import/curation/optic_lobe.py
     owner: adm
     stages:
       dataset: {fill: {type: pdb_dataset}}
@@ -168,7 +168,7 @@ connectomes:
     version: "783"
     vfb_dataset: Dorkenwald2023
     vfb_site: flywire783
-    runner: src/VFB_connectomics_import/flywire_import.py
+    runner: src/vfb_connectomics_import/curation/flywire.py
     owner: adm
     stages:
       dataset: {fill: {type: pdb_dataset}}
@@ -188,13 +188,15 @@ connectomes:
     built_version: "626"           # the OWL on the data server is still v626-derived
     vfb_dataset: Bates2026         # v626 was Bates2025; 15,779 of its neurons are dropped in v888
     vfb_site: BANC888
-    runner: src/VFB_connectomics_import/script_runner_BANC.py
+    runner: src/vfb_connectomics_import/connectivity/cli/banc.py
     owner: adm
     stages:
       dataset: {fill: {type: kb_dataset}, live: {type: pdb_cypher}}
       # 146,511 v888 neurons are in the KB, unreleased — see the malecns entry.
       neurons: {fill: {type: kb_cypher, expect: exists}, live: {type: pdb_cypher}}
-      skel:    {fill: {type: jenkins, job: ""}}
+      # The BANC image loader. Runs images/loader.py; see the README BANC section.
+      # First full brain run started 2026-08-27. --region vnc is the other half.
+      skel:    {fill: {type: jenkins, job: "load-banc-neurons"}}
       n2n:
         # connectome_BANC_n2n.owl is still v626-derived, and its filename carries no
         # version for owl_index to discriminate on — hence `built_version` above,
@@ -211,7 +213,7 @@ connectomes:
     label: "FAFB (CATMAID)"
     provider: catmaid
     vfb_site: catmaid_fafb
-    runner: src/VFB_connectomics_import/script_runner_CATMAID.py
+    runner: src/vfb_connectomics_import/connectivity/cli/catmaid.py
     owner: adm
     issue: 8
     stages:
@@ -226,7 +228,7 @@ connectomes:
     label: "L1EM (CATMAID)"
     provider: catmaid
     vfb_site: catmaid_l1em
-    runner: src/VFB_connectomics_import/script_runner_CATMAID.py
+    runner: src/vfb_connectomics_import/connectivity/cli/catmaid.py
     owner: adm
     issue: 15
     stages:

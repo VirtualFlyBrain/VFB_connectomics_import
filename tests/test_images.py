@@ -285,28 +285,71 @@ def test_error_is_not_terminal():
 # ----------------------------------------------------------------------------- geometry
 def test_region_bounds_match_the_vfb_template_grids():
     """Read from the template NRRD headers on the VFB file server. The maleCNS script's
-    constants (627.3695649, 293.1875965, 173) decode as exactly (grid - 1) * spacing."""
-    from vfb_connectomics_import.images import loader as L
-    brain = L.REGIONS['brain'].bounds
+    constants (627.3695649, 293.1875965, 173) decode as exactly (grid - 1) * spacing.
+
+    The templates belong to VFB, not to any one connectome, so both datasets' regions must
+    resolve to the same bounds — writing one dataset onto a differently-sized grid would
+    misalign it against everything already served there.
+    """
+    from vfb_connectomics_import.images import connectomes as C
+    brain = C.TEMPLATES['JRC2018U'].bounds
     assert abs(brain[0][1] - 627.3695649) < 1e-6
     assert abs(brain[1][1] - 293.1875965) < 1e-6
     assert abs(brain[2][1] - 173.0) < 1e-9
-    vnc = L.REGIONS['vnc'].bounds
+    vnc = C.TEMPLATES['JRCVNC2018U'].bounds
     assert [round(b[1], 4) for b in vnc] == [263.6, 515.6, 152.4]
+    for cx in C.CONNECTOMES.values():
+        assert cx.region('brain').bb().tolist() == C.TEMPLATES['JRC2018U'].bb().tolist()
+        assert cx.region('vnc').bb().tolist() == C.TEMPLATES['JRCVNC2018U'].bb().tolist()
 
 
 def test_cut_keeps_the_right_side_of_the_neuropil_boundary():
-    """brain y < 305,801; vnc y > 549,946. The 244 um of connective between them is
-    dropped from both halves (ISSUES.md IMG-3)."""
+    """BANC separates on y, maleCNS on z, and each drops the connective from BOTH halves.
+
+    The gap is the point (ISSUES.md IMG-3): registration support runs well past each
+    neuropil with no anatomy to constrain it, so material in between warps into
+    coordinates that *pass* a bbox check. A cut that merely split the neuron in two would
+    reintroduce exactly the bug this exists to prevent.
+    """
     import numpy as np
+    from vfb_connectomics_import.images import connectomes as C
     from vfb_connectomics_import.images import loader as L
-    ys = [100_000, 305_800, 400_000, 549_947, 900_000]      # nm
-    arr = np.zeros((len(ys), 7))
-    arr[:, 3] = ys
-    assert L.REGIONS['brain'].cut_swc(arr)[:, 3].tolist() == [100_000, 305_800]
-    assert L.REGIONS['vnc'].cut_swc(arr)[:, 3].tolist() == [549_947, 900_000]
-    kept = set(L.REGIONS['brain'].cut_swc(arr)[:, 3]) | set(L.REGIONS['vnc'].cut_swc(arr)[:, 3])
-    assert 400_000 not in kept, 'connective material must be in neither half'
+
+    # (connectome, swc column the cut reads, below / inside-the-gap / above)
+    cases = [(C.BANC, 3, 100_000, 400_000, 900_000),
+             (C.MALECNS, 4, 100_000, 400_000, 900_000)]
+    for cx, col, below, gap, above in cases:
+        arr = np.zeros((3, 7))
+        arr[:, col] = [below, gap, above]
+        brain = L.cut_swc(arr, cx.region('brain').cut)
+        vnc = L.cut_swc(arr, cx.region('vnc').cut)
+        assert brain[:, col].tolist() == [below], cx.id
+        assert vnc[:, col].tolist() == [above], cx.id
+        kept = set(brain[:, col]) | set(vnc[:, col])
+        assert gap not in kept, f'{cx.id}: connective material must be in neither half'
+
+
+def test_the_cut_planes_are_the_ones_that_were_derived():
+    """Guard the four numbers the whole rebuild rests on, with their provenance."""
+    from vfb_connectomics_import.images import connectomes as C
+    assert (C.BANC.region('brain').cut.axis, C.BANC.region('brain').cut.at) == (1, 305_801.0)
+    assert (C.BANC.region('vnc').cut.axis, C.BANC.region('vnc').cut.at) == (1, 549_946.0)
+    assert (C.MALECNS.region('brain').cut.axis,
+            C.MALECNS.region('brain').cut.at) == (2, 340_544.0)
+    assert (C.MALECNS.region('vnc').cut.axis,
+            C.MALECNS.region('vnc').cut.at) == (2, 527_616.0)
+    for cx in C.CONNECTOMES.values():
+        for name in ('brain', 'vnc'):
+            assert cx.region(name).cut.derived_from, f'{cx.id}/{name} has no provenance'
+
+
+def test_only_malecns_has_a_ladder():
+    """BANC publishes LOD 0 only, so it must fall through to decimation."""
+    from vfb_connectomics_import.images import connectomes as C
+    assert C.BANC.ladder is None
+    assert C.MALECNS.ladder is not None
+    assert C.MALECNS.ladder.rungs == (0, 1, 2, 3)
+    assert C.MALECNS.ladder.calibrated_from
 
 
 def test_to_url_round_trips_to_local():
@@ -344,3 +387,99 @@ if __name__ == '__main__':
             print(f'  FAIL  {name}: {type(e).__name__}: {e}')
     print(f'\n{len(fns) - failed}/{len(fns)} passed')
     sys.exit(1 if failed else 0)
+
+
+def test_the_loader_only_asks_a_region_for_things_it_has():
+    """Guard the Region API the loader depends on.
+
+    `loader.Region` used to be a local dataclass carrying `bounds` and `spacing` directly.
+    Moving regions into connectomes.py put those on `Region.template` instead, and
+    `write_nrrd` was left reaching for the old spelling — which nothing caught, because the
+    only product that touches them is the NRRD and the end-to-end checks had been run with
+    `--products swc,obj`. 27 of the first 42 tasks of a rehearsal run failed on it.
+
+    Reading the attribute names out of the source is deliberately crude; the point is that
+    it cannot go stale the way a hand-maintained list would.
+    """
+    import re
+    from vfb_connectomics_import.images import connectomes as C
+    from vfb_connectomics_import.images import loader as L
+
+    src = open(L.__file__).read()
+    used = {a for a in re.findall(r'\bregion\.([a-z_]+)', src)}
+    assert used, 'found no region attribute uses — has the loader been renamed?'
+    for cx in C.CONNECTOMES.values():
+        for name in ('brain', 'vnc'):
+            r = cx.region(name)
+            missing = sorted(a for a in used if not hasattr(r, a))
+            assert not missing, f'{cx.id}/{name}: loader uses region.{missing} which do not exist'
+
+
+def test_nrrd_grid_comes_from_the_template_not_the_region():
+    """The NRRD must land on the stack VFB already serves, for every connectome."""
+    from vfb_connectomics_import.images import connectomes as C
+    for cx in C.CONNECTOMES.values():
+        assert cx.region('brain').template.grid == (1210, 566, 174)
+        assert cx.region('vnc').template.grid == (660, 1290, 382)
+        assert cx.region('brain').template.spacing == (0.5189161, 0.5189161, 1.0)
+        assert cx.region('vnc').template.spacing == (0.4, 0.4, 0.4)
+
+
+# --------------------------------------------------------------- fetch failure vs finding
+class _FakeMesh:
+    """Minimal stand-in: enough faces to be material, no geometry."""
+    def __init__(self, n=10_000):
+        import numpy as np
+        self.faces = np.zeros((n, 3), int)
+        self.vertices = np.zeros((n, 3), float)
+
+
+def _malecns_region():
+    from vfb_connectomics_import.images import connectomes as C
+    return C.MALECNS.region('brain')
+
+
+def test_a_rung_fetch_failure_is_not_a_finding_of_no_material():
+    """A transient fetch failure must never be reported as "nothing here".
+
+    `sources.mesh()` swallows every exception and returns None, because upstream coverage
+    is genuinely patchy (BANC 94.4%/68.8%, docs/ISSUES.md IMG-4). `size_mesh` therefore
+    cannot distinguish "this rung is empty in this region" from "GCS just 503'd", and if it
+    returns None the probe's proof that material EXISTS here is thrown away. `decide()`
+    then sees an empty region with a usable source and deletes a correct image.
+
+    The probe is the evidence. If it had material and no rung does, that is a failure and
+    must raise so the task retries — `error` is deliberately not a terminal status.
+    """
+    import pytest
+    from vfb_connectomics_import.images import loader as L
+
+    class _AllFetchesFail:
+        def mesh(self, ident, lod=0):
+            return None
+
+    region = _malecns_region()
+    st = L.Settings(connectome='malecns')
+    probe = _FakeMesh()
+    old_src, old_tm = L._W.src, L.transform_mesh
+    L._W.src = _AllFetchesFail()
+    L.transform_mesh = lambda m, r: None          # nothing survives, because nothing arrived
+    try:
+        with pytest.raises(RuntimeError, match='fetch'):
+            L.size_mesh('1', region, probe, st, {})
+    finally:
+        L._W.src, L.transform_mesh = old_src, old_tm
+
+
+def test_usability_survives_dropping_the_probe_mesh():
+    """`process()` frees the probe before `decide()` runs; that must not change the verdict.
+
+    `usable` is the guard that stops a transient failure destroying an image, and it read
+    the live `mesh` attribute — so freeing the mesh to save memory silently flipped a
+    mesh-only neuron from usable to `no_source`, which skips the write entirely.
+    """
+    from vfb_connectomics_import.images.loader import Sources
+    s = Sources(mesh=object(), swc=None, swc_source='none', mesh_fetched=True)
+    assert s.usable
+    s.mesh = None                       # what process() does to drop the big allocation
+    assert s.usable, 'dropping the probe must not make the neuron look unfetchable'

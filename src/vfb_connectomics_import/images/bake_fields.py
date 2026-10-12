@@ -1,126 +1,173 @@
 #!/usr/bin/env python
-"""Build the baked BANC->template deformation fields consumed by `banc_baked.py`.
+"""Bake a Region's declared transform chain onto a dense grid, for `chain.py` to consume.
 
-Run once. Needs `transformix` on PATH (see below) and ~15 GB of free RAM at peak.
-Takes ~30 min: 3.4 min for the brain field, ~28 min for the VNC one.
+    export PATH="$HOME/opt/elastix/bin:$HOME/opt/usr/local/lib/cmtk/bin:$PATH"
+    export DYLD_LIBRARY_PATH="$HOME/opt/elastix/lib:$DYLD_LIBRARY_PATH"   # Linux: LD_
+    python -m vfb_connectomics_import.images.bake_fields --connectome malecns --region brain
 
-    export PATH="$HOME/opt/elastix/bin:$PATH"
-    export DYLD_LIBRARY_PATH="$HOME/opt/elastix/lib:$DYLD_LIBRARY_PATH"   # Linux: LD_LIBRARY_PATH
-    python -m vfb_connectomics_import.images.bake_fields [--out DIR] [--step-nm 2000]
+Why bake at all
+---------------
+Two different costs, both fatal at whole-dataset scale, and baking removes both:
 
-What it does
-------------
-1. Probes where each BANC registration actually has support, by detecting elastix's
-   identity fallback (a point outside the B-spline valid region comes back unchanged).
-2. Sizes each field's grid to that support plus a margin.
-3. Samples the elastix hop onto the grid and writes `.npy` + a sidecar `.json`.
+* **Binary hops.** ElastixTransform (all BANC legs) and CMTKtransform (the maleCNS VNC
+  legs) spawn `transformix`/`streamxform` per call with text point files. Measured:
+  elastix ~0.35 s fixed + 9.8 us/point; CMTK 11-36 ms fixed + 15.8-23.8 us/point.
+* **H5 hops.** Not free either, and NOT in the way TRANSFORMS.md's "11 us/point" implies.
+  Measured 2026-08-28 on maleCNS: ~0.4-1.0 s of FIXED cost per call per hop, which does
+  **not** amortise across neurons because each neuron reads a different region of the
+  deformation field. Ten different neurons through one warm TransformSequence: median
+  440 ms, APL's 43,737 nodes 4.1 s, and MBON03's 4.59 M-vertex lod0 mesh **5.53 s**.
 
-Only the elastix hop is baked (BANC -> JRC2018F / JRCVNC2018F). The downstream H5 hops are
-already dense fields distributed by the Saalfeld lab and stay as navis transforms.
+A baked field is 0.2-0.35 us/point with no fixed cost, memory-mapped so the OS page cache
+shares one copy across every worker, and it replaces the binaries and the H5 files
+outright: maleCNS goes from 4.4 GB of H5 plus a CMTK install to ~230 MB of `.npy`.
 
-`.npy` rather than `.npz` so it can be memory-mapped; the sidecar json carries `lo`/`step`
-so the grid can never be orphaned from its array.
+What is baked is decided per region in `connectomes.py`, not here. BANC bakes only its
+elastix span and keeps the JRC tail live; maleCNS bakes all the way to the U templates.
+
+`affine_fallback=False` — deliberate
+------------------------------------
+`TransformSequence.xform` defaults `affine_fallback=True`, which makes H5transform return
+an *affine approximation* for points outside the deformation field's support. Baking that
+in would freeze a plausible-looking approximation into the field, permanently
+indistinguishable from real support. We bake with it off, so out-of-support grid nodes are
+NaN, which is what `BakedField` already returns outside its own grid — the two then agree,
+and out-of-domain stays detectable. See the "NaN outside the grid" note in TRANSFORMS.md.
+
+Memory
+------
+Baked in slabs into a `np.lib.format.open_memmap` output, so peak RAM is one slab rather
+than the whole grid. The previous version transformed all 18.6 M BANC nodes in a single
+call and wanted ~15 GB.
 """
 import argparse
 import json
 import os
+import sys
 import time
 
 import numpy as np
-import navis
-import flybrains
-from navis.transforms.base import TransformSequence
 
-# whole-BANC bounding box, nanometres (flybrains.BANC.boundingbox)
-BANC_LO = np.array([79342., 35563., 43.])
-BANC_HI = np.array([966128., 1131156., 315520.])
-PROBE_STEP = 4000.
-MARGIN = 20_000.
+sys.path.insert(0, os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))))          # -> src/
+from vfb_connectomics_import.images import chain            # noqa: E402
+from vfb_connectomics_import.images import connectomes as C  # noqa: E402
 
-TARGETS = (('brain', 'JRC2018F'), ('vnc', 'JRCVNC2018F'))
+MARGIN = 20_000.0          # source units; trilinear lookup needs neighbours at the cut face
 
 
-def _seq(target):
-    path, trs = navis.transforms.registry.find_bridging_path('BANC', target)
-    return path, TransformSequence(*trs, copy=False), TransformSequence(*trs[:1], copy=False)
+def grid_axes(region, connectome, step, margin=MARGIN):
+    """(lo, n) per axis: the region's anatomy plus a margin, clipped to the real volume."""
+    if region.extent is None:
+        raise SystemExit(
+            f'{region.name}: no `extent` declared in connectomes.py, so the grid cannot be '
+            f'sized. Add the region\'s source-space anatomical bounds (and say where they '
+            f'came from in `extent_from`).')
+    lo = np.asarray(region.extent[0], float) - margin
+    hi = np.asarray(region.extent[1], float) + margin
+    if connectome.volume:
+        lo = np.maximum(lo, np.asarray(connectome.volume[0], float))
+        hi = np.minimum(hi, np.asarray(connectome.volume[1], float))
+    # ceil, not floor: the grid must SPAN [lo, hi]. With floor the top node lands below
+    # `hi`, and wherever the volume clamp has already eaten the margin that shortfall is
+    # real anatomy — it cost ~1 um at the caudal tip of the maleCNS abdominal neuromere,
+    # which would have come back as NaN and been trimmed without complaint.
+    n = np.ceil((hi - lo) / step).astype(int) + 1
+    return lo, n
 
 
-def support_band(target, verbose=True):
-    """Where does this registration have real (non-identity) support? BANC nm."""
-    gx = [np.arange(BANC_LO[i], BANC_HI[i] + PROBE_STEP, PROBE_STEP) for i in range(3)]
-    grid = np.stack(np.meshgrid(*gx, indexing='ij'), -1).reshape(-1, 3)
-    path, seq, pre = _seq(target)
+def bake(connectome, region, out_dir, step=None, chunk_points=2_000_000, verbose=True):
+    b = region.bake
+    if b is None:
+        raise SystemExit(f'{connectome.id}/{region.name} declares no `bake` in connectomes.py')
+    step = float(step or b.step_nm)
+    lo, n = grid_axes(region, connectome, step)
+    shape = tuple(int(x) for x in n)
+    total = int(np.prod(shape))
+
+    seq, described = chain.resolve(region, use_baked=False, verbose=False)
     if verbose:
-        print(f'  {target}: {" -> ".join(path)}  probing {len(grid)/1e6:.2f}M nodes',
-              flush=True)
-    t0 = time.time()
-    um = pre.xform(grid)          # BANC nm -> BANCum, so identity is detectable
-    out = seq.xform(grid)
-    ident = np.linalg.norm(out - um, axis=1) < 1e-3
-    ok = ~ident & ~np.isnan(out).any(axis=1)
-    sup = grid[ok]
-    band = dict(y_lo=float(sup[:, 1].min()), y_hi=float(sup[:, 1].max()),
-                x_lo=float(sup[:, 0].min()), x_hi=float(sup[:, 0].max()),
-                z_lo=float(sup[:, 2].min()), z_hi=float(sup[:, 2].max()),
-                in_domain_frac=float(ok.mean()), probe_seconds=round(time.time() - t0, 1))
-    if verbose:
-        print(f'    in-domain {100*ok.mean():.1f}%   supported y '
-              f'{band["y_lo"]/1000:.0f}..{band["y_hi"]/1000:.0f} um', flush=True)
-    return band
+        print(f'{connectome.id}/{region.name}: baking {b.frm} -> {b.to}')
+        for d in described:
+            print(f'    {d}')
+        print(f'  grid {shape} @ {step:.0f} {connectome.units}  = {total/1e6:.2f} M nodes '
+              f'({total*12/1e6:.0f} MB)')
+        print(f'  lo {np.round(lo).astype(np.int64).tolist()}  '
+              f'hi {np.round(lo + (n-1)*step).astype(np.int64).tolist()}', flush=True)
 
-
-def bake(target, lo, hi, step, out_dir, stem, verbose=True):
-    gx = [np.arange(lo[i], hi[i] + step, step) for i in range(3)]
-    shape = tuple(len(g) for g in gx)
-    grid = np.stack(np.meshgrid(*gx, indexing='ij'), -1).reshape(-1, 3)
-    _, seq, _ = _seq(target)
-    if verbose:
-        print(f'  baking {stem}: grid {shape} = {len(grid)/1e6:.2f}M nodes '
-              f'({np.prod(shape)*12/1e6:.0f} MB)', flush=True)
-    t0 = time.time()
-    field = seq.xform(grid).reshape(*shape, 3).astype(np.float32)
-    dt = time.time() - t0
     os.makedirs(out_dir, exist_ok=True)
-    npy = os.path.join(out_dir, stem + '.npy')
-    np.save(npy, field)
-    json.dump(dict(lo=list(map(float, lo)), step=[float(step)] * 3, target=target,
-                   shape=list(field.shape), dtype=str(field.dtype), banc_space='nm',
-                   built=time.strftime('%Y-%m-%d'), build_seconds=round(dt, 1),
-                   note='elastix hop only; compose with the JRC H5 transforms downstream'),
-              open(os.path.splitext(npy)[0] + '.json', 'w'), indent=1)
+    npy = os.path.join(out_dir, b.stem + '.npy')
+    tmp = npy + '.partial'
+    field = np.lib.format.open_memmap(tmp, mode='w+', dtype=np.float32, shape=shape + (3,))
+
+    ax = [lo[i] + step * np.arange(shape[i]) for i in range(3)]
+    per_plane = shape[1] * shape[2]
+    planes = max(1, int(chunk_points // max(per_plane, 1)))
+    t0, n_nan = time.time(), 0
+    for i0 in range(0, shape[0], planes):
+        i1 = min(i0 + planes, shape[0])
+        g = np.stack(np.meshgrid(ax[0][i0:i1], ax[1], ax[2], indexing='ij'), -1)
+        out = chain.xform(seq, g.reshape(-1, 3), affine_fallback=False)
+        n_nan += int(np.isnan(out).any(1).sum())
+        field[i0:i1] = out.reshape(i1 - i0, shape[1], shape[2], 3).astype(np.float32)
+        if verbose:
+            done = i1 / shape[0]
+            el = time.time() - t0
+            print(f'    x {i1:4d}/{shape[0]}  {100*done:5.1f}%  {el/60:5.1f} min '
+                  f'(eta {el/done*(1-done)/60:5.1f} min)', flush=True)
+    field.flush()
+    del field
+    os.replace(tmp, npy)
+    dt = time.time() - t0
+
+    meta = dict(
+        connectome=connectome.id, region=region.name,
+        source=b.frm, target=b.to,
+        lo=[float(x) for x in lo], step=[step] * 3,
+        shape=list(shape) + [3], dtype='float32', units=connectome.units,
+        chain=described, affine_fallback=False,
+        out_of_support_frac=round(n_nan / total, 6),
+        extent_from=region.extent_from, margin=MARGIN,
+        cut=dict(axis=int(region.cut.axis), at=float(region.cut.at),
+                 keep=int(region.cut.keep), derived_from=region.cut.derived_from),
+        built=time.strftime('%Y-%m-%d'), build_seconds=round(dt, 1),
+        note='Full declared chain, baked. Out-of-support nodes are NaN, NOT affine-'
+             'extrapolated (affine_fallback=False). Compose nothing downstream unless '
+             '`target` is short of the final template.')
+    with open(os.path.splitext(npy)[0] + '.json', 'w') as fh:
+        json.dump(meta, fh, indent=1)
     if verbose:
-        print(f'    {dt/60:.1f} min -> {npy} ({os.path.getsize(npy)/1e6:.0f} MB)',
-              flush=True)
+        print(f'  {dt/60:.1f} min -> {npy} ({os.path.getsize(npy)/1e6:.0f} MB)')
+        print(f'  out of support: {n_nan:,}/{total:,} nodes '
+              f'({100*n_nan/total:.2f}%) -> NaN', flush=True)
     return npy
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--connectome', required=True, choices=sorted(C.CONNECTOMES))
+    ap.add_argument('--region', required=True, help='brain | vnc | both')
     ap.add_argument('--out', default=os.environ.get(
         'BANC_FIELD_DIR', os.path.expanduser('~/Documents/banc_transform_fields')))
-    ap.add_argument('--step-nm', type=float, default=2000.,
-                    help='grid spacing in BANC nm (default 2000 = 2 um)')
-    args = ap.parse_args()
+    ap.add_argument('--step-nm', type=float, default=None,
+                    help='grid spacing in source units (default: the region\'s Bake.step_nm)')
+    ap.add_argument('--chunk-points', type=int, default=2_000_000,
+                    help='points per transform call; caps peak RAM (default 2M)')
+    args = ap.parse_args(argv)
 
-    flybrains.register_transforms()
+    import navis, flybrains
     navis.set_pbars(hide=True)
+    flybrains.register_transforms()
 
-    print('1. probing registration support', flush=True)
-    bands = {tag: support_band(tgt) for tag, tgt in TARGETS}
-
-    print('\n2. baking', flush=True)
-    for tag, tgt in TARGETS:
-        b = bands[tag]
-        lo = np.maximum(BANC_LO, [b['x_lo'] - MARGIN, b['y_lo'] - MARGIN, b['z_lo'] - MARGIN])
-        hi = np.minimum(BANC_HI, [b['x_hi'] + MARGIN, b['y_hi'] + MARGIN, b['z_hi'] + MARGIN])
-        bake(tgt, lo, hi, args.step_nm, args.out, f'banc_{tag}_2um')
-
-    json.dump(bands, open(os.path.join(args.out, 'support.json'), 'w'), indent=1)
-    print(f'\ndone -> {args.out}', flush=True)
-    print('Verify with:  python -c "from vfb_connectomics_import.images import transforms as banc_baked; '
-          'transforms.self_check()"')
+    c = C.get(args.connectome)
+    regions = ['brain', 'vnc'] if args.region == 'both' else [args.region]
+    for rn in regions:
+        bake(c, c.region(rn), args.out, step=args.step_nm,
+             chunk_points=args.chunk_points)
+    print(f'\ndone -> {args.out}')
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
