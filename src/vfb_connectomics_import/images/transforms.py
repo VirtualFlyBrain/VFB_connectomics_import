@@ -76,9 +76,14 @@ def resolve_field_dir(field_dir=None):
     Returning the provenance matters in CI: 'built-in default' in a Jenkins log is the
     tell that neither environment variable was set on the agent.
 
-    `$IMAGE_FIELD_DIR` is the name to use — one directory holds every connectome's fields,
-    so the BANC-specific spelling was never right. `$BANC_FIELD_DIR` is still honoured
-    because Jenkins jobs and docs/TRANSFORMS.md use it.
+    `$IMAGE_FIELD_DIR` is the name to use; `$BANC_FIELD_DIR` is still honoured because
+    older Jenkins jobs and docs/TRANSFORMS.md use it.
+
+    This returns ONE directory, and that is deliberate: a field is located by stem
+    (`malecns_brain_2um.npy`), and `chain._baked` only ever looks up the one stem the hop it
+    is resolving needs. So the fields may all live together, or in a directory per
+    connectome with the variable set per job — both work, and nothing here has to know
+    which you chose.
     """
     if field_dir:
         return field_dir, 'field_dir argument'

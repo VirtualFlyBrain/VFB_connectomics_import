@@ -78,7 +78,12 @@ def _baked(stem, hop, field_dir, mmap=True):
     if not os.path.exists(path):
         raise ChainError(
             f'baked field {stem!r} not found.\n  looked in : {d}\n  chosen by : {how}\n'
-            f'  missing   : {path}\n  fix       : set $BANC_FIELD_DIR, or build it with '
+            f'  missing   : {path}\n'
+            f'  fix       : point $IMAGE_FIELD_DIR at the directory holding this '
+            f'connectome\'s fields\n'
+            f'              (one directory per connectome is fine — nothing requires them '
+            f'to share one),\n'
+            f'              or build it with '
             f'`python -m vfb_connectomics_import.images.bake_fields`.')
     bf = BakedField(path, mmap=mmap)
     if bf.target != hop.target:
