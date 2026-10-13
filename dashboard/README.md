@@ -146,6 +146,8 @@ built_version: "626"    # what the OWL on the server was actually built FROM
 
 Bump `built_version` when the artifact is rebuilt; **delete the field entirely once
 filenames carry the version**, as `owl_index` will then discriminate unaided.
+BANC has done this: its n2n cell matches only `connectome_BANC888_n2n\.owl`, and the
+field is gone.
 
 ## Common edits
 

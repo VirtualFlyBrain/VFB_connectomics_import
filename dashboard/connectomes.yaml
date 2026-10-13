@@ -187,7 +187,8 @@ connectomes:
     # neurons whose root ids survived from v626 carry any. KB and PDB spell BANC
     # short_forms identically, so no kb_* overrides.
     version: "888"
-    built_version: "626"           # the OWL on the data server is still v626-derived
+    # No built_version: the n2n artifact now carries its release in the filename, so
+    # owl_index below only matches a v888 build (see VERSIONING / README naming rule).
     vfb_dataset: Bates2026         # v626 was Bates2025; 15,779 of its neurons are dropped in v888
     vfb_site: BANC888
     runner: src/vfb_connectomics_import/connectivity/cli/banc.py
@@ -200,13 +201,11 @@ connectomes:
       # First full brain run started 2026-08-27. --region vnc is the other half.
       skel:    {fill: {type: jenkins, job: "load-banc-neurons"}}
       n2n:
-        # connectome_BANC_n2n.owl on the data server is v626-derived, and its filename
-        # carries no version — hence `built_version` above, which keeps this cell
-        # honestly orange. The v888 rebuild is connectome_BANC888_n2n.owl (see
-        # docs/BANC_connectivity_notes.md); once it replaces the old file on the data
-        # server, bump built_version to 888 (or drop it, now the name carries the
-        # version).
-        fill:   {type: owl_index, match: 'connectome_BANC(888)?_n2n\.owl'}
+        # Matches only the versioned v888 build (connectome_BANC888_n2n.owl, see
+        # docs/BANC_connectivity_notes.md), so the cell stays grey until that file is
+        # on the data server and turns green by itself once it is — the old
+        # unversioned v626 connectome_BANC_n2n.owl no longer counts.
+        fill:   {type: owl_index, match: 'connectome_BANC888_n2n\.owl'}
         update: {type: gcs_versions, bucket: lee-lab_brain-and-nerve-cord-fly-connectome, prefix: 'neuron_connectivity/', pattern: 'v(\d+)'}
         live:   {type: pdb_cypher}
       n2r:  {fill: {type: manual, state: not_started}}

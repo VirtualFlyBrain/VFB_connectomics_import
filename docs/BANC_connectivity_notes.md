@@ -78,8 +78,9 @@ the version IRI and `dc:source`.
 
 Replace `connectome_BANC_n2n.owl` on the VFB data server with
 `connectome_BANC888_n2n.owl` (the dumps pipeline side-loads `connectome_*.owl`, so the
-old v626 file must be **removed**, not left alongside — both would load). Then bump
-`built_version` to `888` in `dashboard/connectomes.yaml`.
+old v626 file must be **removed**, not left alongside — both would load). The
+dashboard's n2n cell matches only `connectome_BANC888_n2n.owl`, so it turns green by
+itself once the file is there; no manifest change is needed.
 
 ## Notes
 
