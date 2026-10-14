@@ -191,6 +191,17 @@ the check.
 cell with nothing behind it. Better than a wrong image, but somebody has to decide whether
 those channels should go. That is curation, not this job.
 
+**For whoever owns the thumbnail job (Robbie): check it against the empty folders.**
+Replaced images keep their thumbnails on purpose (`io.py`: `thumbnail*` goes briefly out of
+sync). The new meshes look the same at thumbnail size, and thumbnails are clipped to the
+template, so the updater just redoes them and nobody notices. Spurious images lose their
+thumbnails along with everything else (`remove_all` sweeps `volume*` and `thumbnail*`). So
+the only visible breakage is those ~161,000 emptied channels: the KB still points at them,
+and the site shows a missing thumbnail. What happens next depends on how the thumbnail job
+finds its work. If it looks for folders with a volume but no thumbnail, it skips them. If
+it goes through the KB's channels, it will hit ~161,000 empty folders, and may error on
+each or keep retrying. Not this job's problem to fix, but check before the full run lands.
+
 **The new SWCs have no cell body.** `to_tree_neuron` in
 [`loader.py`](../src/vfb_connectomics_import/images/loader.py) builds the `TreeNeuron` from
 every SWC column except column 1, the node type (`1` = soma), so `navis.write_swc` writes no
