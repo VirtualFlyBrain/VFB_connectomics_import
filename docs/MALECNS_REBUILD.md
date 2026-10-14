@@ -126,6 +126,39 @@ point, and no neuron is ever left without an image.
 
 ---
 
+## The Jenkins build step
+
+The "Execute shell" step is kept short on purpose; this section is its documentation.
+
+**Parameters:** `connectome` (`banc` | `malecns`), `region`, `mode`, `workers`, and
+optionally `shard`/`of`, `limit`, `roots`, `redo`, `no_delete_spurious`, `dry_run`,
+`archive`. `KB_USER` / `KB_PASSWORD` come from the job's credentials binding. They are used
+for one read-only Cypher query per region per build, which builds the work list. All
+geometry is anonymous HTTPS from a public bucket.
+
+**Python:** a python3.9 venv with `pip install -e ".[images]"`. Install the `images` extra,
+not `.`. The extra pulls navis/flybrains/cloud-volume/skeletor and skips the connectivity
+stack (neuprint-python, python-catmaid, fafbseg, vfb_connect), which this job does not use
+and which needs python 3.10+.
+
+**Environment the step sets or may set:**
+
+| variable | what |
+|---|---|
+| `IMAGE_FIELD_DIR` | `$JENKINS_HOME/vfb-local-transforms/<connectome>_transform_fields`, chosen from `connectome`. Takes precedence over the legacy `$BANC_FIELD_DIR`, which the step `unset`s anyway |
+| `FLYBRAINS_DATA` | Only BANC reads an H5 at run time (its JRC2018F→JRC2018U tail hop). Defaults to `~/flybrain-data`; otherwise the first BANC build fetches `JRC2018U_JRC2018F.h5` (717 MB) once. maleCNS is baked end to end and downloads nothing |
+| `IMAGE_SWC_DIR` | Optional staged skeleton mirror, **per connectome**: BANC wants `<root>_skeleton.swc` from its bucket, maleCNS wants `<id>.swc` from `gs://flyem-male-cns`. A staged dir is authoritative, so a miss does **not** fall back to the bucket. Preflight warns if the mirror is incomplete. Leave unset unless staged |
+| `IMAGE_WRITE` | Output root. Defaults to `/IMAGE_WRITE/` |
+
+**Ledger and report:** `ledger-<connectome>-<region>[-<shard>of<of>].jsonl` and
+`report-<same>-<BUILD_NUMBER>.csv` in the workspace. The same path on every build is what
+makes it resume (see the ledger note below).
+
+**compare.py** only runs when `archive=true` and `dry_run` is not set. It builds old-vs-new
+HTML pages for test batches.
+
+---
+
 ## Things that will bite
 
 **`--mesh-budget-mb` changed meaning.** It used to be the "already small enough, leave it
@@ -152,6 +185,18 @@ the check.
 ~161,000 will point at empty folders and VFB will still offer a VNC entry for a brain-only
 cell with nothing behind it. Better than a wrong image, but somebody has to decide whether
 those channels should go. That is curation, not this job.
+
+**The new SWCs have no cell body.** `to_tree_neuron` in
+[`loader.py`](../src/vfb_connectomics_import/images/loader.py) builds the `TreeNeuron` from
+every SWC column except column 1, the node type (`1` = soma), so `navis.write_swc` writes no
+soma tag. The soma *node* is still there; it just isn't tagged. Seen on the compare page for
+14470 (brain, `published_skeleton`): 8,918 points either side, max 0.058 µm apart, a soma
+sphere on the old skeleton and none on the new. This applies to every SWC the loader writes,
+not just that neuron. **Deliberately left alone** (2026-10-14): users view the mesh, and
+NBLAST ignores node types and radii, so no scores move. To fix it later, keep column 1 and
+pass `soma=` (the node IDs where it is 1) to the `TreeNeuron`. First check the published
+source skeletons actually tag a soma, which hasn't been verified. If they don't, the soma
+has to come from the connectome's soma table instead.
 
 ---
 
