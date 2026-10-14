@@ -117,8 +117,13 @@ chain [vnc -> JRCVNC2018U]:
 If a field is missing, in the wrong folder, truncated, or is BANC's under a maleCNS name,
 that is where it fails — loudly, naming the resolved path and the file it looked for.
 
-**3. Then an archived test batch.** `limit=200, archive=true`. Read `report-*.csv` and open
-a few folders. `tools/rehearsal/check.py` is the list of things worth checking.
+**3. Then an archived test batch.** `limit=200, include=10001,523769,42125,513235,
+archive=true`. `limit` counts neurons, each with both regions, so that's 204 neurons and
+~408 tasks. `include` guarantees neurons that cross the neck: three descending (DNp01 giant
+fibre, DNa02_L, DNpe008) and one ascending (AN00A006), the same crossers as the
+`tools/malecns_compare` panel. Descending neurons are around 1% of the dataset, so a strided
+sample of 200 holds one or two by chance at best. These four are the known hard cases. Read
+`report-*.csv` and open a few folders. `tools/rehearsal/check.py` is the list of things worth checking.
 
 **4. Then shard the rest, with `archive=false`.** At 1.48 s/neuron, 333,402 tasks on 8
 workers is ~17 hours, or about 2 hours across 8 shards. Resumable from the ledger at any
@@ -131,7 +136,7 @@ point, and no neuron is ever left without an image.
 The "Execute shell" step is kept short on purpose; this section is its documentation.
 
 **Parameters:** `connectome` (`banc` | `malecns`), `region`, `mode`, `workers`, and
-optionally `shard`/`of`, `limit`, `roots`, `redo`, `no_delete_spurious`, `dry_run`,
+optionally `shard`/`of`, `limit`, `include`, `roots`, `redo`, `no_delete_spurious`, `dry_run`,
 `archive`. `KB_USER` / `KB_PASSWORD` come from the job's credentials binding. They are used
 for one read-only Cypher query per region per build, which builds the work list. All
 geometry is anonymous HTTPS from a public bucket.

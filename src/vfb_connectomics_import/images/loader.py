@@ -73,13 +73,16 @@ task may keep its own ledger safely. `error` is never terminal, so failures retr
 
 Test batches
 ------------
-`--limit N` takes N neurons **and logs exactly which ones**, so a test run's membership is
-in the build log, not just in the report CSV. It samples evenly across the sorted list
-rather than taking the head, because root ids are not random — all 730 beginning
-`720575940` have no published SWC — so `--sample head` returns an all-pathological batch.
-Both are deterministic. `--roots a,b,c` (or `--roots @file`) restricts to specific ids, to
-reproduce a batch exactly or retry named failures; every `--limit` run prints the `--roots`
-line that would reproduce it.
+`--limit N` takes N **neurons**, with every region each one has in the run, and logs
+exactly which ones, so a test run's membership is in the build log, not just in the report
+CSV. With `--region both` that is up to 2N tasks, and a neuron that crosses the neck is
+seen in both templates. It samples evenly across the sorted neurons rather than taking the
+head, because root ids are not random — all 730 beginning `720575940` have no published
+SWC — so `--sample head` returns an all-pathological batch. Both are deterministic.
+`--include a,b,c` (or `@file`) adds named neurons on top of the sample, e.g. descending
+neurons, so a small batch always exercises the cut. `--roots a,b,c` (or `--roots @file`)
+restricts to specific ids, to reproduce a batch exactly or retry named failures; every
+`--limit` run prints the `--roots` line that would reproduce it.
 
 What it does per neuron
 -----------------------
@@ -976,19 +979,51 @@ def build_tasks(args, regions):
             print(f'ledger {args.ledger}: {len(done):,} recorded, '
                   f'{before - len(tasks):,} skipped, {len(tasks):,} remain')
 
-    if args.limit and args.limit < len(tasks):
-        if args.sample == 'head':
-            tasks = tasks[:args.limit]
-        else:
-            # Evenly strided by default. Root IDs are not random: every one of the 730
-            # roots beginning 720575940 has no published SWC (mostly unclassified
-            # fragments, glia and not_a_neuron), so `--sample head` on a sorted list
-            # returns an all-pathological batch. Striding is just as deterministic and
-            # actually representative.
-            step = len(tasks) / args.limit
-            tasks = [tasks[int(i * step)] for i in range(args.limit)]
+    if args.include and not args.limit:
+        print('--include has no effect without --limit: every neuron is already selected')
+    if args.limit:
+        tasks = select_neurons(tasks, args.limit, args.sample,
+                               _read_roots(args.include) if args.include else ())
         log_selection(tasks, args.sample)
     return tasks
+
+
+def select_neurons(tasks, limit, sample='strided', include=()):
+    """Pick `limit` NEURONS from the task list, keeping every region each one has.
+
+    Tasks are (root, folder, region), and with `--region both` each neuron is two adjacent
+    tasks. Picking tasks would split neurons — and striding by a step near an even number
+    lands on the same member of nearly every pair, giving an all-brain batch. So pick roots,
+    then take all of their tasks.
+
+    `include` roots are added on top of the sample (and excluded from it, so the sample is
+    still `limit` other neurons). One that has no task left — not in this shard, already
+    done per the ledger, or not in the dataset — is reported, not silently dropped.
+    """
+    include = list(dict.fromkeys(include))
+    roots = sorted({t[0] for t in tasks})
+    present = set(roots)
+    absent = [r for r in include if r not in present]
+    if absent:
+        print(f'--include: {len(absent)} root(s) have no task in this run (other shard, '
+              f'already done per the ledger — use --redo — or not in the dataset): '
+              f'{absent[:10]}')
+    forced = [r for r in include if r in present]
+    pool = [r for r in roots if r not in set(forced)]
+    if limit >= len(pool):
+        picked = pool
+    elif sample == 'head':
+        picked = pool[:limit]
+    else:
+        # Evenly strided by default. Root IDs are not random: every one of the 730
+        # roots beginning 720575940 has no published SWC (mostly unclassified
+        # fragments, glia and not_a_neuron), so `--sample head` on a sorted list
+        # returns an all-pathological batch. Striding is just as deterministic and
+        # actually representative.
+        step = len(pool) / limit
+        picked = [pool[int(i * step)] for i in range(limit)]
+    keep = set(picked) | set(forced)
+    return [t for t in tasks if t[0] in keep]
 
 
 def _read_roots(spec):
@@ -1008,7 +1043,8 @@ def log_selection(tasks, how, cap=200):
     the progress lines do not say. The ledger and --report CSV both record every root, but
     those are files; this puts the membership in the build log itself.
     """
-    print(f'selected {len(tasks):,} neuron(s) [{how}] — '
+    n_roots = len({t[0] for t in tasks})
+    print(f'selected {n_roots:,} neuron(s), {len(tasks):,} task(s) [{how}] — '
           f'{"listing all" if len(tasks) <= cap else f"first/last {cap // 2}"}:')
     shown = tasks if len(tasks) <= cap else tasks[:cap // 2] + [None] + tasks[-cap // 2:]
     for t in shown:
@@ -1016,8 +1052,9 @@ def log_selection(tasks, how, cap=200):
             print('   ...')
             continue
         print(f'   {t[0]:20s} {t[2]}')
-    print(f'reproduce this exact batch with: --roots {",".join(t[0] for t in tasks[:5])}'
-          + (',...' if len(tasks) > 5 else ''), flush=True)
+    roots = list(dict.fromkeys(t[0] for t in tasks))
+    print(f'reproduce this exact batch with: --roots {",".join(roots[:5])}'
+          + (',...' if len(roots) > 5 else ''), flush=True)
 
 
 # ------------------------------------------------------------------------------------ main
@@ -1132,13 +1169,19 @@ def parse_args(argv=None):
     ap.add_argument('--shard', type=int, default=0, help='shard index for array jobs')
     ap.add_argument('--of', type=int, default=1, help='number of shards')
     ap.add_argument('--limit', type=int, default=None,
-                    help='process at most N neurons, and log exactly which ones. Use for '
-                         'test batches.')
+                    help='process at most N neurons — each with all of its regions in the '
+                         'run — and log exactly which ones. Use for test batches.')
     ap.add_argument('--sample', default='strided', choices=['strided', 'head'],
                     help='how --limit picks its N. strided (default) spreads the pick over '
                          'the whole sorted list; head takes the literal first N, which on '
                          'BANC is an all-pathological batch (the 730 roots beginning '
                          '720575940 have no published SWC). Both are deterministic.')
+    ap.add_argument('--include', default=None,
+                    help='with --limit: always add these root ids (comma-separated, or '
+                         '@file) on top of the N sampled, e.g. descending neurons so a '
+                         'test batch exercises the brain/VNC cut. The maleCNS crossers '
+                         'used for validation: 10001,523769,42125 (DNp01, DNa02_L, '
+                         'DNpe008) and 513235 (AN00A006, ascending).')
     ap.add_argument('--roots', default=None,
                     help='restrict to these root ids: comma-separated, or @file. Use to '
                          'reproduce a batch exactly, or to retry specific failures.')

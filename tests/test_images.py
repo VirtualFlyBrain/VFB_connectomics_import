@@ -374,21 +374,6 @@ def test_to_local_strips_either_vfb_url_scheme():
         assert got == '/IMAGE_WRITE/VFB/i/0010/5soo/VFB_00101567'
 
 
-if __name__ == '__main__':
-    fns = [(n, f) for n, f in sorted(globals().items())
-           if n.startswith('test_') and callable(f)]
-    failed = 0
-    for name, fn in fns:
-        try:
-            fn()
-            print(f'  PASS  {name}')
-        except Exception as e:
-            failed += 1
-            print(f'  FAIL  {name}: {type(e).__name__}: {e}')
-    print(f'\n{len(fns) - failed}/{len(fns)} passed')
-    sys.exit(1 if failed else 0)
-
-
 def test_the_loader_only_asks_a_region_for_things_it_has():
     """Guard the Region API the loader depends on.
 
@@ -505,3 +490,75 @@ def test_parse_args_still_builds_with_the_generated_epilog():
     from vfb_connectomics_import.images import loader as L
     args = L.parse_args(['--connectome', 'malecns', '--region', 'both'])
     assert (args.connectome, args.region) == ('malecns', 'both')
+
+
+# ------------------------------------------------------------------ --limit selection
+def _both_regions(n):
+    """A sorted --region both task list: two adjacent tasks per root, brain first."""
+    return sorted((f'{r:06d}', f'/f/{r}/{region}', region)
+                  for r in range(n) for region in ('brain', 'vnc'))
+
+
+def test_limit_picks_neurons_and_keeps_both_regions():
+    """The bug: --limit picked TASKS, so with --region both a neuron got one region, and a
+    stride near an even number picked the brain task of nearly every pair."""
+    from vfb_connectomics_import.images import loader as L
+    for n, limit in ((1000, 10), (1000, 250), (999, 37)):
+        picked = L.select_neurons(_both_regions(n), limit)
+        roots = {t[0] for t in picked}
+        assert len(roots) == limit
+        for r in roots:
+            assert {t[2] for t in picked if t[0] == r} == {'brain', 'vnc'}, r
+
+
+def test_include_adds_named_neurons_on_top_of_the_sample():
+    from vfb_connectomics_import.images import loader as L
+    tasks = _both_regions(1000)
+    picked = L.select_neurons(tasks, 5, include=['000123', '000777', '000123'])
+    roots = {t[0] for t in picked}
+    assert {'000123', '000777'} <= roots
+    assert len(roots) == 7                       # 5 sampled + 2 named, no double count
+    assert len(picked) == 14                     # both regions each
+
+
+def test_include_of_a_root_with_no_task_is_reported_not_fatal(capsys=None):
+    from vfb_connectomics_import.images import loader as L
+    picked = L.select_neurons(_both_regions(10), 2, include=['nope'])
+    assert len({t[0] for t in picked}) == 2
+
+
+def test_include_keeps_a_one_region_neuron_as_it_is():
+    """A neuron with only one task left (brain-only, or VNC done per the ledger) is
+    selected with what it has; nothing is invented."""
+    from vfb_connectomics_import.images import loader as L
+    tasks = [t for t in _both_regions(10) if not (t[0] == '000004' and t[2] == 'vnc')]
+    picked = L.select_neurons(tasks, 1, include=['000004'])
+    assert [t[2] for t in picked if t[0] == '000004'] == ['brain']
+
+
+def test_limit_head_and_oversized_limit():
+    from vfb_connectomics_import.images import loader as L
+    tasks = _both_regions(10)
+    assert {t[0] for t in L.select_neurons(tasks, 3, 'head')} == {'000000', '000001', '000002'}
+    assert L.select_neurons(tasks, 50) == tasks
+
+
+def test_parse_args_accepts_include():
+    from vfb_connectomics_import.images import loader as L
+    args = L.parse_args(['--limit', '40', '--include', '10001,523769'])
+    assert (args.limit, args.include) == (40, '10001,523769')
+
+
+if __name__ == '__main__':
+    fns = [(n, f) for n, f in sorted(globals().items())
+           if n.startswith('test_') and callable(f)]
+    failed = 0
+    for name, fn in fns:
+        try:
+            fn()
+            print(f'  PASS  {name}')
+        except Exception as e:
+            failed += 1
+            print(f'  FAIL  {name}: {type(e).__name__}: {e}')
+    print(f'\n{len(fns) - failed}/{len(fns)} passed')
+    sys.exit(1 if failed else 0)
