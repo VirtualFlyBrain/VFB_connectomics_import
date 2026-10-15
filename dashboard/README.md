@@ -93,7 +93,7 @@ the KB probes fall back to the `vfb_*` keys when they don't (BANC, e.g., is
 ## ⚠️ Artifact filenames carry no version — and must (TODO)
 
 Generated OWL is named `connectome_BANC_n2n.owl`, `connectome_manc.owl` and so on:
-**no version token**. So `owl_index` matches whatever is on the data server and
+**no version token**. BANC v888's `connectome_BANC888_n2n.owl` is the first to carry one, as this section asks. So `owl_index` matches whatever is on the data server and
 reports 🟩 done regardless of which release it was built from. That makes every
 `n2n`/`n2r` cell assert a freshness it cannot actually verify.
 
@@ -146,6 +146,8 @@ built_version: "626"    # what the OWL on the server was actually built FROM
 
 Bump `built_version` when the artifact is rebuilt; **delete the field entirely once
 filenames carry the version**, as `owl_index` will then discriminate unaided.
+BANC has done this: its n2n cell matches only `connectome_BANC888_n2n\.owl`, and the
+field is gone.
 
 ## Common edits
 

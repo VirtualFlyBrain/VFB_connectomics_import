@@ -19,6 +19,14 @@
 # Usage:
 #   chunked_n2n_build.sh <input.tsv> <output.owl> [ontology-iri] [rows-per-chunk]
 #
+# Provenance (see README "Artifact naming"): set VERSION_IRI and/or DC_SOURCE in
+# the environment to stamp the ontology with a version IRI and a dc:source
+# annotation, so the artifact records which release it was built from, e.g.
+#   VERSION_IRI=http://virtualflybrain.org/data/VFB/OWL/BANC888_import.owl \
+#   DC_SOURCE="BANC v888 (Site BANC888, gs://.../neuron_connectivity/v888/)" \
+#     ./chunked_n2n_build.sh BANC888_n2n.tsv connectome_BANC888_n2n.owl \
+#       http://virtualflybrain.org/data/VFB/OWL/BANC_import.owl
+#
 # Example (Berg2025 male CNS):
 #   ./chunked_n2n_build.sh Berg2025_n_2_n.tsv connectome_malecns_1_0_n2n.owl \
 #       http://virtualflybrain.org/data/VFB/OWL/CATMAID_import.owl 2000000
@@ -41,6 +49,9 @@ NCHUNK=$(ls "$WORK"/chunk_* | wc -l | tr -d ' ')
 echo "    $NCHUNK chunks"
 
 export ROBOT_JAVA_ARGS="-Xmx${HEAP}"
+ANNOTATE=(annotate --ontology-iri "$ONT_IRI")
+[ -n "${VERSION_IRI:-}" ] && ANNOTATE+=(--version-iri "$VERSION_IRI")
+[ -n "${DC_SOURCE:-}" ] && ANNOTATE+=(--annotation dc:source "$DC_SOURCE")
 i=0
 for c in "$WORK"/chunk_*; do
   cat "$WORK/header.tsv" "$c" > "$WORK/cur.tsv"
@@ -49,7 +60,7 @@ for c in "$WORK"/chunk_*; do
     --add-prefix "n2o: http://neo2owl/custom/" \
     --add-prefix "VFB: http://virtualflybrain.org/reports/VFB_" \
     --template "$WORK/cur.tsv" \
-    annotate --ontology-iri "$ONT_IRI" \
+    "${ANNOTATE[@]}" \
     convert -f ofn --output "$WORK/out_$(printf '%02d' $i).owl"
   i=$((i+1))
 done
