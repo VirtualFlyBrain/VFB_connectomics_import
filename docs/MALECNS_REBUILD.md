@@ -1,7 +1,10 @@
 # Rebuilding the maleCNS images — handover
 
-State as of 2026-10-12. Everything described here is verified; what is *not* verified is
-called out explicitly at the end. Read "Before you press go" even if you skip the rest.
+State as of 2026-10-15. **The full run is under way**: one build, `region=both`,
+`workers=40`, `archive=false`, started 15 Oct, about 24 h at 0.26 s/task. Everything
+described here is verified; what is *not* verified is called out explicitly at the end.
+Read "Before you press go" even if you skip the rest, and "After the run" before telling
+anyone it's done.
 
 ---
 
@@ -74,7 +77,26 @@ at 1.48 s/neuron on 4 workers: **PASS, all nine checks, 0 errors.** 58 deleted s
 separately verified as a genuine undo — restoring from it returned the mirror to its exact
 baseline file count.
 
-**Unit tests** — 54, up from 25. `tests/test_sizing.py` encodes the measured cases rather
+**On the live job, 2026-10-14/15.** A 100-neuron test batch (`limit=100, archive=true`,
+190 tasks; ten had one region already done from an earlier batch): 95 replaced, 95 deleted
+spurious, 0 errors, every skeleton `published_skeleton`, 0 meshes needing decimation. A
+neck-crossing neuron (`jrmc/02fc`) had both halves replaced. The compare pages matched the
+old images apart from the cut, and the kept thumbnails still match the new meshes.
+
+What the batch showed that isn't in the rehearsal:
+- **About 30% of replaced meshes are served at `lod2`** (32–58 f/µm²) rather than `lod1`
+  (149–200), because their `lod1` would bust the 200 f/µm² ceiling. That's the policy
+  working, but it's a 4–5× drop in surface detail, mostly on neurons with a lot of
+  skeleton for a small mesh (e.g. 73143: 4,044 nodes → 19,908 faces). If anyone reports a
+  coarse-looking neuron, this is the first thing to check (`lod2` in the log line).
+- **The largest served meshes are 0.9–1.45 M faces** (10556 brain: 1,445,910), all `lod1`
+  and within policy. See the gzip limit below for why that's a big download.
+- **VNC replacements take about twice as long** as brain ones (28–38 s vs 12–20 s per task).
+- **Most replaced folders had no `volume.dps.pkl`** to sweep (`-1` in the log rather than
+  `-2`). See "After the run".
+
+**Unit tests** — 62 across `test_images.py` and `test_sizing.py`, up from 25.
+`test_banc_query.py` needs `vfb_connect` and is skipped where that isn't installed. `tests/test_sizing.py` encodes the measured cases rather
 than assertions: the giant fibre that busts a budget its prediction met, the 370 f/µm² that
 the ceiling has to catch, and both of `decimate_mesh`'s old escape hatches.
 
@@ -125,9 +147,38 @@ fibre, DNa02_L, DNpe008) and one ascending (AN00A006), the same crossers as the
 sample of 200 holds one or two by chance at best. These four are the known hard cases. Read
 `report-*.csv` and open a few folders. `tools/rehearsal/check.py` is the list of things worth checking.
 
-**4. Then shard the rest, with `archive=false`.** At 1.48 s/neuron, 333,402 tasks on 8
-workers is ~17 hours, or about 2 hours across 8 shards. Resumable from the ledger at any
-point, and no neuron is ever left without an image.
+**4. Then run the rest, with `archive=false`.** One build with more workers is simpler than
+sharding: one ledger, one log. The `s/neuron` figure in the log is wall-clock time per
+**task** with all workers running (elapsed / tasks), so the total time is just tasks × that
+figure; don't divide by the worker count again. (An earlier version of this note did, and
+got ~17 h.) Measured on 2026-10-15, `archive=false`, 24 workers on the dedicated server:
+
+| workers | s/task | 333k tasks |
+|---|---|---|
+| 8 | 0.92 | ~85 h |
+| 24 | 0.34 | ~32 h |
+| 40 | 0.26 | **~24 h** |
+
+8 → 24 was close to linear; 24 → 40 gave 1.3× for 1.67× the workers, so 40 is about where
+it stops paying. Memory peaked at 17 GB at 40 workers. If going higher anyway, watch
+whether s/task keeps falling and whether the `error=` count starts climbing. Archiving
+costs roughly 1.6× (1.49 s/task at 8 workers in the test batches).
+
+Resumable from the ledger at any point, including after changing `workers`, and no neuron
+is ever left without an image.
+
+**`empty_here` after a restart is expected.** Tasks still running when a build is aborted
+can finish deleting a spurious image before the ledger records them. The rerun finds an
+empty folder and records `empty_here`, which is the correct end state. Expect about as many
+as were in flight at each abort (10 after two restarts on 15 Oct). A count that keeps
+climbing through the run would be new.
+
+**The memory graphs disagree, and that's fine.** At 40 workers the host showed ~17 GB used
+while Rancher showed the Jenkins container at 80–120 GB and climbing. The container figure
+includes the kernel's file cache: every mesh downloaded and every file written to the NAS.
+The host's "used" leaves that out. The kernel frees it on demand, so it isn't a leak. The
+network graphs split the same way: NAS writes show on the host (spikes to ~570 Mbps), and
+only the downloads show on the container.
 
 ---
 
@@ -137,7 +188,9 @@ The "Execute shell" step is kept short on purpose; this section is its documenta
 
 **Parameters:** `connectome` (`banc` | `malecns`), `region`, `mode`, `workers`, and
 optionally `shard`/`of`, `limit`, `include`, `roots`, `redo`, `no_delete_spurious`, `dry_run`,
-`archive`. `KB_USER` / `KB_PASSWORD` come from the job's credentials binding. They are used
+`archive`. `limit` counts **neurons**, each with all of its regions. `include` and `roots`
+are string parameters holding comma-separated root IDs (or `@file`), passed as
+`${include:+--include "$include"}`. `KB_USER` / `KB_PASSWORD` come from the job's credentials binding. They are used
 for one read-only Cypher query per region per build, which builds the work list. All
 geometry is anonymous HTTPS from a public bucket.
 
@@ -214,13 +267,49 @@ pass `soma=` (the node IDs where it is 1) to the `TreeNeuron`. First check the p
 source skeletons actually tag a soma, which hasn't been verified. If they don't, the soma
 has to come from the connectome's soma table instead.
 
+**The log says `s/neuron` but counts tasks.** With `region=both` a neuron is two tasks, so
+"332,025 left" is about 166,000 neurons. The numbers are right; only the label is off.
+
+**Each region downloads the neuron separately.** A task is one neuron in one region, and
+each fetches the skeleton and meshes itself. So with `region=both` every neuron is
+downloaded twice. Fixing it means one task per neuron building both halves, which changes
+how the ledger records progress. Not done: at 0.26 s/task the run fits in a day anyway.
+
+---
+
+## After the run
+
+**1. The web cache will hide the result.** `www.virtualflybrain.org` serves `/data/` through
+a cache (`X-Cache: HIT`, not Cloudflare) with `Cache-Control: max-age=31536000`. On 15 Oct,
+`jrmc/02fc`'s new 23.4 MB and 68.8 MB meshes were on disk, but a plain download still
+returned the old 117 MB and 118 MB files (`Last-Modified` Nov 2025 and Aug 2026). The same
+URL with `?cb=<anything>` returned the new ones. So until the cache for `/data/VFB/i/` is
+cleared, users keep the old meshes, and deleted spurious files may still be served if they
+were cached. Browsers also keep their copies for a year, which only a shorter `max-age` or
+versioned URLs fixes. This is for whoever runs the VFB web servers (Robbie), not this job.
+Check the files on disk, or with a cache-busting query, before deciding something didn't
+work.
+
+**2. The thumbnail job** needs checking against the emptied folders. See "Things that
+will bite".
+
+**3. Rerun the NBLAST dotprops cache** (`VFB_similarity_import`, `CACHE.md` "First run").
+It notices every replaced SWC and rebuilds its dotprops. Single-region neurons should come
+out unchanged and not be rescored; neck-crossers' halves are now cut, so they will be. Any
+spurious image it had cached now has no SWC and gets dropped. If that's over 10% of a
+template's cache, its drop guard stops it on purpose; check its run log, then rerun with
+`MAX_DROP_FRACTION=1`. That most folders here had no `volume.dps.pkl` suggests many maleCNS
+channels were never in that cache, so the drop may well be smaller. Run it after this job
+finishes, not during: neurons it rebuilt early would just be rebuilt again.
+
 ---
 
 ## Known limits of the verification
 
-- The rehearsal is **80 neurons**. Both bugs fixed on 2026-10-09 were invisible to a
-  240-neuron run a week earlier. It covers the paths well; it cannot prove behaviour at
-  333,402. Read the first shard's report before launching the rest.
+- The rehearsal is **80 neurons** and the live test batches a few hundred. Both bugs fixed on
+  2026-10-09 were invisible to a 240-neuron run a week earlier. They cover the paths well;
+  they cannot prove behaviour at 333,402. Read the full run's summary before calling it
+  done: errors, `empty_here`, and the replaced/deleted split.
 - `verify_baked` compares the bake against **the chain it was built from**. If flybrains'
   `JRCFIB2022M → JRC2018M` were itself wrong, both routes would be wrong together and agree
   perfectly. That is a different question, answered by ROI-based validation against VFB's
