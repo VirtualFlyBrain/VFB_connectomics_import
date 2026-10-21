@@ -281,13 +281,17 @@ write_obj(mesh, path, dp)                            -> None
 Wired in at the OBJ write only:
 
 ```python
-dec, note = decimate_mesh(t_mesh, mesh_density, mesh_budget_mb)
+dec, note = decimate_mesh(t_mesh, mesh_density, budget)   # budget: images/sizing.Budget
 r['obj_faces'] = len(dec.faces)
 r['obj_note']  = note
 write_obj(dec, tmp)
 ```
 
-CLI: `--mesh-density` (default 37.0, **`0` disables**) and `--mesh-budget-mb` (default 4.0).
+CLI: `--mesh-density` (default 100.0, **`0` disables the density target — the wire
+budget still binds**), `--mesh-skip-mb` (default 4.0, the "already small enough"
+threshold) and `--mesh-budget-mb` (default 20.0, the **hard cap**). The last two were
+one flag until 2026-10; see `docs/MESH_SIZING.md`. Only datasets with no published LOD
+ladder reach this code at all — today that is BANC alone.
 Both are threaded through the worker task tuple, so they are honoured under `--workers`.
 Per-neuron `obj_faces` / `obj_note` land in the ledger and the `--report` CSV, which is how a
 run is audited after the fact.
