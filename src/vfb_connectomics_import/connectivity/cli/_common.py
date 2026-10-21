@@ -13,9 +13,13 @@ import sys
 from vfb_connectomics_import.connectivity.provenance import write_provenance
 
 
-def base_parser(description, default_site=None):
+def base_parser(description, default_site=None, site_required=None):
+    """site_required defaults to True unless a default Site is given; a CLI that
+    still accepts a legacy spelling of the Site passes False and checks itself."""
+    if site_required is None:
+        site_required = default_site is None
     p = argparse.ArgumentParser(description=description)
-    p.add_argument("--site", "-s", default=default_site, required=default_site is None,
+    p.add_argument("--site", "-s", default=default_site, required=site_required,
                    help="VFB Site short_form of the release to build (e.g. BANC888, "
                         "male-cns_v1_0, flywire783, catmaid_l1em). The source release "
                         "is derived from it." + (" Default: %s." % default_site if default_site else ""))
@@ -24,7 +28,8 @@ def base_parser(description, default_site=None):
     p.add_argument("--threshold", "-t", type=int, default=1,
                    help="Keep connections with MORE than this many synapses "
                         "(default: 1, i.e. >= 2, the same for every connectome)")
-    p.add_argument("--output", "-o", required=True, help="Output TSV path for the ROBOT template")
+    p.add_argument("--output", "-o", required=site_required,
+                   help="Output TSV path for the ROBOT template")
     return p
 
 
