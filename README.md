@@ -163,34 +163,34 @@ Schema for neuron:neuron connectomics:
 
 The generated OWL must have an IRI = resolveable URL pointing to location of stored OWL file. Loading will then be a simple matter of adding this URL to the triple store config. 
 
-### Artifact naming: include the source version (TODO)
+### Artifact versions: recorded in the file, not the name
 
-Generated artifacts **must carry the source version in the filename** — use the VFB
-`Site` `short_form`, which is the canonical version token in both the KB and PDB:
+Every connectivity OWL records the source release it was built from **in its header**:
+a version IRI `http://virtualflybrain.org/data/VFB/OWL/<Site>_import.owl` and a
+`dc:source` annotation, where `<Site>` is the VFB `Site` short_form — the canonical
+version token in both the KB and PDB (`BANC888`, `male-cns_v1_0`, `flywire783`, …).
+Filenames stay stable (`connectome_BANC_n2n.owl`, `connectome_malecns_n2n.owl`), so
+nothing downstream has to follow a rename.
 
-    connectome_BANC888_n2n.owl        not  connectome_BANC_n2n.owl
-    connectome_male_cns_v1_0_n2n.owl  not  connectome_malecns_n2n.owl
+How it is applied:
 
-BANC v888 (`connectome_BANC888_n2n.owl`) is the first artifact built this way, with the
-version also in its version IRI and `dc:source` — see
-[`docs/BANC_connectivity_notes.md`](docs/BANC_connectivity_notes.md) and the
-`VERSION_IRI` / `DC_SOURCE` options of `data_owl/chunked_n2n_build.sh`.
+- **Each build takes one argument, `--site`.** The source release is derived from that
+  Site's `link_base` (`connectivity/provenance.py`): the neuprint dataset
+  (`dataset=male-cns:v1.0`), the CAVE / bucket materialization (`data_version=888`),
+  or, for a live CATMAID server, the build date. Nothing about the release is
+  hard-coded or passed separately, so the edges and the recorded release cannot
+  disagree.
+- **The build writes `<template>.provenance`** next to the ROBOT template, and
+  `data_owl/chunked_n2n_build.sh` stamps it into the OWL header automatically (it
+  warns if there is none).
+- **The import dashboard reads it back** (`owl_header` probe): it range-requests the
+  first 64 kB of the uploaded file and compares the stamped Site with the target.
 
-Current artifacts do not, and the version is unrecoverable afterwards: the OWL
-contains only `VFB:`/`FBbt:` IDs and `n2o:weight`, so nothing in the file records
-which materialization it came from, and `last-modified` is misleading (the BANC n2n
-OWL is dated two months after the newest TSV in this repo but was built from v626).
-Recovering it required range-requesting part of the 451 MB file and fingerprinting
-its neuron population against KB dataset membership.
-
-Also stamp the version into the ontology itself via `robot annotate`
-(`--version-iri`, plus a `dc:source` annotation naming the Site and source file), so
-it survives a rename.
-
-Apply both when each connectome is next rebuilt. Code that locates these files should
-pattern-match on the version token rather than hard-code a name — see
-[`dashboard/README.md`](dashboard/README.md) for how this currently forces a
-`built_version` workaround in the status probes.
+Files built before this have no stamp; the dashboard shows them as orange, "release not
+recorded". Their release can only be recovered by hand — e.g. the old BANC n2n OWL took
+range-requesting part of the 451 MB file and fingerprinting its neurons against KB
+dataset membership — and `last-modified` is no guide (that file was dated two months
+after its newest input).
 
 ## Tech spec 
 

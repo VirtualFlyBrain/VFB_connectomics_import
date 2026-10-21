@@ -19,17 +19,16 @@
 # Usage:
 #   chunked_n2n_build.sh <input.tsv> <output.owl> [ontology-iri] [rows-per-chunk]
 #
-# Provenance (see README "Artifact naming"): set VERSION_IRI and/or DC_SOURCE in
-# the environment to stamp the ontology with a version IRI and a dc:source
-# annotation, so the artifact records which release it was built from, e.g.
-#   VERSION_IRI=http://virtualflybrain.org/data/VFB/OWL/BANC888_import.owl \
-#   DC_SOURCE="BANC v888 (Site BANC888, gs://.../neuron_connectivity/v888/)" \
-#     ./chunked_n2n_build.sh BANC888_n2n.tsv connectome_BANC888_n2n.owl \
-#       http://virtualflybrain.org/data/VFB/OWL/BANC_import.owl
+# Provenance (README "Artifact versions"): the output records which source release
+# it was built from in its header — a version IRI <base>/<Site>_import.owl and a
+# dc:source annotation — which the import dashboard reads back. The connectivity
+# CLIs write them next to the template as <input.tsv>.provenance, and this script
+# picks that file up automatically. VERSION_IRI / DC_SOURCE in the environment
+# override it. Without either the OWL is built unstamped, with a warning.
 #
-# Example (Berg2025 male CNS):
-#   ./chunked_n2n_build.sh Berg2025_n_2_n.tsv connectome_malecns_1_0_n2n.owl \
-#       http://virtualflybrain.org/data/VFB/OWL/CATMAID_import.owl 2000000
+# Example (BANC v888; the CLI wrote BANC_n2n.tsv and BANC_n2n.tsv.provenance):
+#   ./chunked_n2n_build.sh BANC_n2n.tsv connectome_BANC_n2n.owl \
+#       http://virtualflybrain.org/data/VFB/OWL/BANC_import.owl 2000000
 set -euo pipefail
 
 SRC="${1:?input template TSV required}"
@@ -37,6 +36,22 @@ FINAL="${2:?output OWL path required}"
 ONT_IRI="${3:-http://virtualflybrain.org/data/VFB/OWL/CATMAID_import.owl}"
 CHUNK_ROWS="${4:-2000000}"
 HEAP="${ROBOT_HEAP:-5g}"
+
+if [ -f "$SRC.provenance" ]; then
+  while IFS=$'\t' read -r key value; do
+    case "$key" in
+      VERSION_IRI) VERSION_IRI="${VERSION_IRI:-$value}" ;;
+      DC_SOURCE)   DC_SOURCE="${DC_SOURCE:-$value}" ;;
+    esac
+  done < "$SRC.provenance"
+  echo "provenance from $SRC.provenance"
+fi
+if [ -z "${VERSION_IRI:-}" ]; then
+  echo "WARNING: no $SRC.provenance and no VERSION_IRI — the OWL will not record its" >&2
+  echo "         source release, and the dashboard will report it as unversioned." >&2
+fi
+echo "    version IRI: ${VERSION_IRI:-<none>}"
+echo "    dc:source:   ${DC_SOURCE:-<none>}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/n2n_build.XXXXXX")"

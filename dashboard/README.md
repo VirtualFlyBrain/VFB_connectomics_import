@@ -38,7 +38,7 @@ Each cell can define up to three probes:
 
 ```yaml
 n2n:
-  fill:   {type: owl_index, match: 'connectome_BANC_n2n\.owl'}  # colour
+  fill:   {type: owl_header, match: 'connectome_BANC_n2n\.owl'} # colour
   update: {type: neuprint_upstream}                             # -> orange if newer
   live:   {type: pdb_cypher}                                    # -> the dot
 ```
@@ -48,6 +48,7 @@ n2n:
 | Type | Checks | Notes |
 |---|---|---|
 | `owl_index` | matching OWL live on `virtualflybrain.org/data/VFB/OWL/` | auto-discovers filenames from the directory listing |
+| `owl_header` | as `owl_index`, then the release the file's header records | reads the stamped version IRI (Site) and compares it with the target; see below. Used for n2n |
 | `repo_glob` | matching artifact present in this repo | e.g. a built TSV not yet uploaded |
 | `jenkins` | a Jenkins job's status | running → in progress, success → done. Needs `meta.jenkins_base` + a `job` name |
 | `neuprint_upstream` | is a newer version available upstream | *update* probe; needs `NEUPRINT_TOKEN` env |
@@ -90,64 +91,36 @@ neuPrint hyphen (`male-cns_v1_0`), PDB underscores it (`male_cns_v1_0`). Give
 the KB probes fall back to the `vfb_*` keys when they don't (BANC, e.g., is
 `BANC888` in both).
 
-## ⚠️ Artifact filenames carry no version — and must (TODO)
+## Which release an uploaded artifact is from: `owl_header`
 
-Generated OWL is named `connectome_BANC_n2n.owl`, `connectome_manc.owl` and so on:
-**no version token**. BANC v888's `connectome_BANC888_n2n.owl` is the first to carry one, as this section asks. So `owl_index` matches whatever is on the data server and
-reports 🟩 done regardless of which release it was built from. That makes every
-`n2n`/`n2r` cell assert a freshness it cannot actually verify.
+The n2n cells use the `owl_header` probe. Like `owl_index` it finds the newest
+matching file on the data server, then it **range-requests the first 64 kB** and reads
+the version IRI the build stamped there — `.../<Site>_import.owl`, where `<Site>` is
+the VFB Site short_form (see the README, "Artifact versions"):
 
-Nothing else recovers it either:
+| Header | Cell |
+|---|---|
+| version IRI names the target Site (`kb_site` / `vfb_site`; KB and PDB spellings both match) | 🟩 done, with the stamped `dc:source` |
+| version IRI names another Site | 🟧 needs update — built from another release |
+| no version IRI | 🟧 needs update — "release not recorded in the file" |
 
-- **The file doesn't say.** `generate_n_n_template()` emits only `VFB:`/`FBbt:` IDs
-  and `n2o:weight`. The `robot annotate` step sets an ontology IRI, not a version.
-- **`last-modified` lies.** The BANC n2n OWL was dated 17-Aug-2026, two months
-  *after* the newest TSV in this repo, yet was built from v626 data.
-- Establishing provenance took an HTTP range request for 3 MB of the 451 MB file,
-  extracting VFB IDs, and testing them against KB dataset membership — 0/400 were
-  v888-only and 78/400 were neurons *dropped* in v888, matching the v626
-  population split (80.5% / 19.5%) exactly. No probe can do that.
+Filenames carry no version, and don't need to: the file says what it is. Files built
+before the stamping existed show orange until rebuilt, which is accurate — nothing
+recorded their release. (Recovering one by hand meant range-requesting 3 MB of the old
+451 MB BANC file and testing its VFB IDs against KB dataset membership — 0/400 were
+v888-only, 78/400 were neurons dropped in v888 — and `last-modified` was no help: that
+file was dated two months after its newest input.)
 
-**Convention to adopt when each connectome is next rebuilt** — put the `Site`
-`short_form` in the filename, since that is already the canonical version token in
-the KB, in PDB, and in this manifest as `vfb_site`:
+The parser is kept in step with `connectivity/provenance.py` by
+`tests/test_provenance.py`.
 
-```
-connectome_BANC626_n2n.owl   ->  connectome_BANC888_n2n.owl
-connectome_male_cns_v1_0_n2n.owl
-```
+### `built_version`
 
-Then the `owl_index` match derives from the manifest instead of a hand-written
-regex per connectome, and a stale artifact simply fails to match — so the cell
-honestly reports that nothing exists for the target version. Also stamp it *inside*
-the file, so it survives a rename:
-
-```bash
-robot annotate --ontology-iri http://virtualflybrain.org/data/VFB/OWL/BANC_import.owl \
-               --version-iri  http://virtualflybrain.org/data/VFB/OWL/BANC888_import.owl \
-               --annotation dc:source "BANC v888 (Site BANC888, GCS neuron_connectivity/v888)"
-```
-
-### `built_version` — the interim workaround
-
-Until then, `version` in the manifest is the version being **targeted**, which
-diverges from reality mid-migration: BANC targets v888 while its OWL is v626-derived.
-Setting `version: "888"` alone made the `n2n` cell go green *and* "up to date",
-because `gcs_versions` compared the target against the bucket and found parity —
-two probes agreeing a stale artifact was current.
-
-So the update probes (`gcs_versions`, `neuprint_upstream`) compare against
-`built_version` when present, falling back to `version`:
-
-```yaml
-version: "888"          # what we are migrating TO
-built_version: "626"    # what the OWL on the server was actually built FROM
-```
-
-Bump `built_version` when the artifact is rebuilt; **delete the field entirely once
-filenames carry the version**, as `owl_index` will then discriminate unaided.
-BANC has done this: its n2n cell matches only `connectome_BANC888_n2n\.owl`, and the
-field is gone.
+`version` is the version being **targeted**. The update probes (`gcs_versions`,
+`neuprint_upstream`) compare upstream against `built_version` when it is present,
+falling back to `version`. It was the interim answer to "the file can't say what it was
+built from" and is no longer needed for n2n cells, whose release `owl_header` reads from
+the file itself; keep it only for a cell whose artifact cannot record its release.
 
 ## Common edits
 

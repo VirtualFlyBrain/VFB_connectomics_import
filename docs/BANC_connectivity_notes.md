@@ -26,9 +26,10 @@ out when edges are restricted to VFB neurons.
 
 ### v888 numbers (2026-10-12)
 
-The import takes the 146,511 KB accessions under `Bates2026` / `BANC888`, which include
-5 neurons flagged deprecated (pdb leaves deprecated neurons out of connectivity results
-anyway); the comparison rows exclude those 5.
+The build of 2026-10-12 took the 146,511 KB accessions under `Bates2026` / `BANC888`,
+which include 5 neurons flagged deprecated (pdb leaves deprecated neurons out of
+connectivity results anyway); the comparison rows exclude those 5. The CLI now selects
+neurons by Site alone (`--dataset` can still narrow it).
 
 | | edges | synapses |
 |---|---|---|
@@ -44,43 +45,43 @@ For comparison, the v626 build had 1,898,631 edges (80,832 neurons, >= 3).
 ### 1. ROBOT template
 
 ```bash
-python -m vfb_connectomics_import.connectivity.cli.banc --output BANC888_n2n.tsv
+python -m vfb_connectomics_import.connectivity.cli.banc --site BANC888 --output BANC_n2n.tsv
 ```
 
-Defaults: `--version 888` → Site `BANC888`, DataSet `Bates2026`, and the v888 bucket
-folder; `--threshold 1` (>= 2). `--connectivity-file` takes a local copy or another URL.
-The parquet is streamed one row group at a time and cut down to VFB-to-VFB rows before
-summing, so memory stays modest. The script stops if any edge end fails to map to a VFB
-id via the Site.
+`--site` (default `BANC888`) is the only release input: the BANC release (888) and the
+bucket folder are derived from the Site's `link_base`, and the neurons are the Site's
+cross-referenced individuals. `--threshold 1` (>= 2) is the default;
+`--connectivity-file` takes a local copy or another URL. The parquet is streamed one row
+group at a time and cut down to VFB-to-VFB rows before summing, so memory stays modest.
+The script stops if any edge end fails to map to a VFB id via the Site, and writes
+`BANC_n2n.tsv.provenance` next to the template.
 
-### 2. OWL — chunked, with the version in the name and the header
+### 2. OWL — chunked, stamped with the release
 
 Use the chunked build: ~5.5M rows needs far more heap than a single `robot template`
-(see `data_owl/ROBOT_terminal_commands.txt`). Put the version in **both** the filename and
-the version IRI, and record the source, so the artifact says what it was built from
-(README, "Artifact naming").
+(see `data_owl/ROBOT_terminal_commands.txt`). It reads `BANC_n2n.tsv.provenance` and
+stamps the header with the version IRI `.../BANC888_import.owl` and a `dc:source`, so the
+file records its release (README, "Artifact versions").
 
 ```bash
 cd src/vfb_connectomics_import/connectivity/data_owl
-VERSION_IRI=http://virtualflybrain.org/data/VFB/OWL/BANC888_import.owl \
-DC_SOURCE="BANC v888 (Site BANC888, gs://lee-lab_brain-and-nerve-cord-fly-connectome/neuron_connectivity/v888/synapses_v1_human_readable_sizethresh3_connectioncountsperneuropil.parquet, summed per pair, weight >= 2)" \
-  ./chunked_n2n_build.sh BANC888_n2n.tsv connectome_BANC888_n2n.owl \
+./chunked_n2n_build.sh BANC_n2n.tsv connectome_BANC_n2n.owl \
     http://virtualflybrain.org/data/VFB/OWL/BANC_import.owl 2000000
-gzip -9k connectome_BANC888_n2n.owl
-gunzip -t connectome_BANC888_n2n.owl.gz
+gzip -9k connectome_BANC_n2n.owl
+gunzip -t connectome_BANC_n2n.owl.gz
 ```
 
 The script fails if the output axiom count differs from the template's row count. The
 ontology IRI stays `BANC_import.owl` (what the loader has always seen); the release is in
-the version IRI and `dc:source`.
+the version IRI and `dc:source`. The v888 build of 2026-10-12 was stamped this way, by
+hand, before the provenance file existed: its header reads `BANC888_import.owl`.
 
 ### 3. Publish
 
-Replace `connectome_BANC_n2n.owl` on the VFB data server with
-`connectome_BANC888_n2n.owl` (the dumps pipeline side-loads `connectome_*.owl`, so the
-old v626 file must be **removed**, not left alongside — both would load). The
-dashboard's n2n cell matches only `connectome_BANC888_n2n.owl`, so it turns green by
-itself once the file is there; no manifest change is needed.
+Replace `connectome_BANC_n2n.owl` on the VFB data server with the new build (same name).
+The dashboard's n2n cell (`owl_header`) reads the release from the file's header, so it
+turns green by itself once the v888 file is there; until then it shows the current
+unstamped v626 file as orange, "release not recorded".
 
 ## Notes
 

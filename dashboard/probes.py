@@ -243,17 +243,93 @@ def _fetch_index(url):
     return _index_cache[url]
 
 
-def probe_owl_index(cfg, ctx, connectome=None, stage_id=None):
+def _owl_index_hit(cfg, ctx):
+    """(name, date, size) of the newest data-server file matching cfg['match'],
+    or (state, detail) when there is none / the server is unreachable."""
     index = _fetch_index(ctx["owl_index_url"])
     if "__error__" in index:
-        return "unknown", "data server unreachable: " + index["__error__"]
+        return None, ("unknown", "data server unreachable: " + index["__error__"])
     pattern = re.compile(cfg.get("match", "$^"), re.IGNORECASE)
     hits = [(n, d, s) for n, (d, s) in index.items() if pattern.search(n)]
     if not hits:
-        return "not_started", "no matching OWL on data server"
+        return None, ("not_started", "no matching OWL on data server")
     hits.sort(key=lambda h: h[1], reverse=True)   # newest by mtime string
-    name, date, size = hits[0]
+    return hits[0], None
+
+
+def probe_owl_index(cfg, ctx, connectome=None, stage_id=None):
+    hit, failed = _owl_index_hit(cfg, ctx)
+    if failed:
+        return failed
+    name, date, size = hit
     return "done", "uploaded: %s (%s, %.0f MB)" % (name, date, size / 1e6)
+
+
+# --------------------------------------------------------------------------- #
+# owl_header — which release is the uploaded OWL built from?
+# --------------------------------------------------------------------------- #
+# Builds stamp the source release into the OWL header as a version IRI
+# <base>/<Site>_import.owl (src/.../connectivity/provenance.py, applied by
+# data_owl/chunked_n2n_build.sh). Reading the first few kB of the uploaded file —
+# the data server honours Range requests — recovers the Site without relying on
+# the filename or on a hand-maintained built_version. Kept in step with
+# provenance.site_from_owl_header by tests/test_dashboard_owl_header.py.
+_OWL_HEAD_BYTES = 65536
+_VERSION_IRI_RE = re.compile(
+    r"http://virtualflybrain\.org/data/VFB/OWL/([A-Za-z0-9_.-]+?)_import\.owl")
+
+
+def site_from_owl_header(text):
+    """Site stamped into an OWL header's version IRI (OFN or RDF/XML), else None."""
+    m = re.search(r"Ontology\(\s*<[^>]+>\s*<([^>]+)>", text)
+    if not m:
+        m = re.search(r"versionIRI[^>]*?rdf:resource=\"([^\"]+)\"", text)
+    if not m:
+        return None
+    v = _VERSION_IRI_RE.fullmatch(m.group(1))
+    return v.group(1) if v else None
+
+
+def _dc_source_from_owl_header(text):
+    m = re.search(r"Annotation\(<http://purl\.org/dc/(?:terms|elements/1\.1)/source> \"([^\"]*)\"\)",
+                  text)
+    return m.group(1) if m else None
+
+
+def _same_site(a, b):
+    """KB and PDB spell some Sites differently (male-cns_v1_0 / male_cns_v1_0)."""
+    norm = lambda s: (s or "").lower().replace("-", "_")   # noqa: E731
+    return bool(a) and norm(a) == norm(b)
+
+
+def probe_owl_header(cfg, ctx, connectome=None, stage_id=None):
+    """Fill probe: the newest matching OWL on the data server, judged by the
+    release its header records against the connectome's target Site:
+
+      stamped with the target Site   -> done
+      stamped with another Site      -> needs_update (built from an older release)
+      no version IRI in the header   -> needs_update ("release not recorded")
+    """
+    hit, failed = _owl_index_hit(cfg, ctx)
+    if failed:
+        return failed
+    name, date, size = hit
+    uploaded = "uploaded: %s (%s, %.0f MB)" % (name, date, size / 1e6)
+    try:
+        head = _get(ctx["owl_index_url"] + name,
+                    headers={"Range": "bytes=0-%d" % (_OWL_HEAD_BYTES - 1)})
+    except Exception as e:                # noqa: BLE001 — degrade, never raise
+        return "unknown", "%s; could not read its header: %s" % (uploaded, e)
+    site = site_from_owl_header(head)
+    targets = [connectome.get("kb_site"), connectome.get("vfb_site")]
+    if site is None:
+        return "needs_update", "%s; release not recorded in the file" % uploaded
+    source = _dc_source_from_owl_header(head)
+    built = "built from Site %s%s" % (site, " — " + source if source else "")
+    if any(_same_site(site, t) for t in targets if t):
+        return "done", "%s; %s" % (uploaded, built)
+    return "needs_update", "%s; %s, target is %s" % (
+        uploaded, built, connectome.get("kb_site") or connectome.get("vfb_site"))
 
 
 # --------------------------------------------------------------------------- #
@@ -610,6 +686,7 @@ def probe_kb_dataset(cfg, ctx, connectome, stage_id=None):
 # --------------------------------------------------------------------------- #
 _FILL = {
     "owl_index": probe_owl_index,
+    "owl_header": probe_owl_header,
     "repo_glob": probe_repo_glob,
     "jenkins": probe_jenkins,
     "manual": probe_manual,
