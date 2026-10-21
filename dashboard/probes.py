@@ -269,8 +269,8 @@ def probe_owl_index(cfg, ctx, connectome=None, stage_id=None):
 # owl_header — which release is the uploaded OWL built from?
 # --------------------------------------------------------------------------- #
 # Builds stamp the source release into the OWL header as a version IRI
-# <base>/<Site>_import.owl (src/.../connectivity/provenance.py, applied by
-# data_owl/chunked_n2n_build.sh). Reading the first few kB of the uploaded file —
+# <base>/<Site>_import.owl (src/.../connectivity/provenance.py, written by
+# connectivity/owl_writer.py). Reading the first few kB of the uploaded file —
 # the data server honours Range requests — recovers the Site without relying on
 # the filename or on a hand-maintained built_version. Kept in step with
 # provenance.site_from_owl_header by tests/test_dashboard_owl_header.py.
