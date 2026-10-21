@@ -186,6 +186,9 @@ How it is applied:
 - **The import dashboard reads it back** (`owl_header` probe): it range-requests the
   first 64 kB of the uploaded file and compares the stamped Site with the target.
 
+The command for each connectome, its edge source, and the diff of the 2026-10-21 rebuild
+against the live files are in [`docs/CONNECTIVITY_BUILDS.md`](docs/CONNECTIVITY_BUILDS.md).
+
 Files built before this have no stamp; the dashboard shows them as orange, "release not
 recorded". Their release can only be recovered by hand — e.g. the old BANC n2n OWL took
 range-requesting part of the 451 MB file and fingerprinting its neurons against KB
