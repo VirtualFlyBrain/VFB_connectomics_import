@@ -110,17 +110,19 @@ class ConnectomicsImport:
         
         accessions_list = valid_df['accession'].tolist()
         
-        # Convert to integers
-        try:
-            accessions_list = list(map(int, accessions_list))
-            print(f"Successfully retrieved {len(accessions_list)} valid accessions" + 
-                  (f" from dataset '{dataset}'" if dataset else "") +
-                  (f" with db '{db}'" if db else ""))
-        except (ValueError, TypeError) as e:
-            print(f"Error converting accessions to integers: {e}")
-            print(f"Sample accessions: {accessions_list[:10]}")
-            return []
-            
+        # Neuron accessions are integer body / root / skeleton ids. Selecting by Site
+        # alone can also match non-neuron records cross-referenced to the Site with
+        # a text accession (e.g. 'manc-connectome', 'optic-lobe'): skip and report
+        # those rather than abandoning every accession.
+        numeric = [a for a in accessions_list if str(a).strip().isdigit()]
+        skipped = sorted({str(a) for a in accessions_list if not str(a).strip().isdigit()})
+        if skipped:
+            print(f"Skipped {len(accessions_list) - len(numeric)} non-numeric accession(s): "
+                  f"{skipped[:10]}")
+        accessions_list = [int(a) for a in numeric]
+        print(f"Successfully retrieved {len(accessions_list)} valid accessions" +
+              (f" from dataset '{dataset}'" if dataset else "") +
+              (f" with db '{db}'" if db else ""))
         return accessions_list #call function
 
     ##get_adjacencies functions must return a df of 'source' - xref (bodyId), 'target' - xref (bodyId), 'weight'- int
@@ -133,6 +135,30 @@ class ConnectomicsImport:
         #filter by synapse count threshold (using total neuron-neuron connectivity in whole brain
         conn_df = conn_df[conn_df.weight > threshold]
         return conn_df
+
+    def get_adjacencies_neuprint_totals(self, accessions, threshold=1, batchsize=2000):
+        """Whole-neuron pair weights from neuprint: the ConnectsTo `weight` (all
+        synapses between the two bodies, whatever ROI they are in), one Cypher query
+        per batch of source bodies, kept where the target is also a VFB neuron.
+
+        Much cheaper than get_adjacencies_neuprint, which goes through
+        fetch_adjacencies: that returns one row per pair *per primary ROI* (and so
+        also drops synapses outside primary ROIs) for the caller to sum back up."""
+        ids = sorted({int(a) for a in accessions})
+        keep = set(ids)
+        parts = []
+        for i in range(0, len(ids), batchsize):
+            batch = ids[i:i + batchsize]
+            q = ("MATCH (a:Neuron)-[w:ConnectsTo]->(b:Neuron) WHERE a.bodyId IN %s AND w.weight > %d "
+                 "RETURN a.bodyId AS source, b.bodyId AS target, w.weight AS weight"
+                 % (batch, int(threshold)))
+            df = self.neuprint_client.fetch_custom(q)
+            parts.append(df[df["target"].isin(keep)])
+            print(f"  neuprint batch {i // batchsize + 1}/{(len(ids) + batchsize - 1) // batchsize}: "
+                  f"{sum(len(p) for p in parts)} edges so far")
+        if not parts:
+            return pd.DataFrame(columns=["source", "target", "weight"])
+        return pd.concat(parts, ignore_index=True)
 
     def get_adjacencies_CATMAID(self, accessions, threshold=0):
         import pymaid

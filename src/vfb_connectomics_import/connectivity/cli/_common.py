@@ -10,6 +10,8 @@ import argparse
 import os
 import sys
 
+import pandas as pd
+
 from vfb_connectomics_import.connectivity.provenance import write_provenance
 
 
@@ -69,3 +71,35 @@ def neuprint_token(path=None):
         with open(path) as fh:
             return fh.read().strip()
     sys.exit("No neuprint token: set NEUPRINT_TOKEN or put it in ~/neuprint_token.txt")
+
+
+def load_pair_weights_file(source, accessions, pre, post, weight, threshold):
+    """(source, target, weight) between VFB neurons from a bulk connectivity file
+    (feather or parquet, local path or URL), summing rows per pair — the file may
+    be split by neuropil — and keeping weight > threshold. pre/post/weight name the
+    file's columns. Read one record batch at a time, so a GB-scale file needs
+    little memory once cut down to VFB neurons."""
+    import fsspec
+    import pyarrow as pa
+    import pyarrow.ipc as ipc
+    import pyarrow.parquet as pq
+    ids = pd.Series(sorted(int(a) for a in accessions), dtype="int64")
+    cols = [pre, post, weight]
+    parts = []
+    with fsspec.open(source, "rb") as fh:
+        if str(source).endswith(".parquet"):
+            pf = pq.ParquetFile(fh)
+            batches = (pf.read_row_group(i, columns=cols) for i in range(pf.num_row_groups))
+        else:
+            reader = ipc.open_file(pa.PythonFile(fh, mode="r"))
+            batches = (reader.get_batch(i).select(cols) for i in range(reader.num_record_batches))
+        for b in batches:
+            df = b.to_pandas()
+            df = df[df[pre].isin(ids) & df[post].isin(ids)]
+            parts.append(df.groupby([pre, post])[weight].sum())
+    if not parts:
+        return pd.DataFrame(columns=["source", "target", "weight"])
+    w = pd.concat(parts).groupby(level=[0, 1]).sum()
+    w = w[w > threshold]
+    return w.rename("weight").reset_index().rename(columns={pre: "source", post: "target"})
+

@@ -140,7 +140,9 @@ connectomes:
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
       n2n:
-        fill:   {type: owl_header, match: 'neuprint_JRC_Hemibrain.*connectomics\.owl'}
+        # connectome_hemibrain.owl, the name the pipeline already aliased the old
+        # neuprint_JRC_Hemibrain_1point1_connectomics.owl to; grey until it is uploaded.
+        fill:   {type: owl_header, match: 'connectome_hemibrain\.owl'}
         update: {type: neuprint_upstream}
         live:   {type: pdb_cypher}
       n2r:  {fill: {type: repo_glob, match: 'src/vfb_connectomics_import/connectivity/data_tsv/*hb*n2r*'}, live: {type: pdb_cypher}}
