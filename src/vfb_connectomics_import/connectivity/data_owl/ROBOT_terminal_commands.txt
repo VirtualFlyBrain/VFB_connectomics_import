@@ -1,30 +1,18 @@
+# n2n builds no longer use ROBOT. Each connectivity CLI writes the OWL directly and
+# validates it (--output connectome_X.owl; see docs/CONNECTIVITY_BUILDS.md), e.g.
+#   python -m vfb_connectomics_import.connectivity.cli.banc --site BANC888 \
+#       --output connectome_BANC_n2n.owl --previous data_owl/connectome_BANC_n2n.owl.gz
+# CI checks that output against `robot template` (robot diff: identical ontologies).
+#
+# The commands below are the historical ROBOT builds, kept for reference. Output
+# must be connectome_*.owl to be side-loaded. A CLI still writes a ROBOT template
+# for --output X.tsv (the release pipeline's CATMAID step); stamp its release by
+# hand with the values in X.tsv.provenance:
+#   annotate --ontology-iri http://virtualflybrain.org/data/VFB/OWL/<name>.owl \
+#            --version-iri <VERSION_IRI> --annotation dc:source "<DC_SOURCE>"
+
 robot template -input-iri http://purl.obolibrary.org/obo/ro.owl --add-prefix "n2o: http://neo2owl/custom/" --add-prefix "VFB: http://virtualflybrain.org/reports/VFB_" --template /Users/alexmclachlan/Documents/GitHub/VFB_connectomics_import/Robot_template.tsv  annotate --ontology-iri http://virtualflybrain.org/data/VFB/OWL/CATMAID_import.owl convert -f ofn --output MANC_1_2_1_n2n_connectivity_Import.owl
 
 robot template -input-iri http://purl.obolibrary.org/obo/ro.owl --add-prefix "n2o: http://neo2owl/custom/" --add-prefix "VFB: http://virtualflybrain.org/reports/VFB_" --template /Users/adm/Documents/GitHub/VFB_connectomics_import/Nern2024_n_2_n.tsv annotate --ontology-iri http://virtualflybrain.org/data/VFB/OWL/CATMAID_import.owl convert -f ofn --output connectome_MCNSOL_1_0_n2n.owl
 
-Output must be connectome_*.owl
-
-
-
 robot template -input-iri http://purl.obolibrary.org/obo/ro.owl --add-prefix "n2o: http://neo2owl/custom/" --add-prefix "VFB: http://virtualflybrain.org/reports/VFB_" --template /Users/adm/Documents/GitHub/VFB_connectomics_import/Berg2025_n_2_n.tsv annotate --ontology-iri http://virtualflybrain.org/data/VFB/OWL/CATMAID_import.owl convert -f ofn --output connectome_malecns_1_0_n2n.owl
-
-# NOTE: the single-pass command above OOMs for very large n2n tables. Berg2025
-# is 15.3M rows and needs ~15.6 GB heap -> fails on a 16 GB machine with:
-#   "Not enough memory to allocate buffers to grow from 4194304 -> 8388608 elements"
-# Use the chunked build instead (splits into ~2M-row chunks, ~4.6 GB each, no swap):
-#   ./chunked_n2n_build.sh ../../../Berg2025_n_2_n.tsv \
-#       ../../../connectome_malecns_1_0_n2n.owl \
-#       http://virtualflybrain.org/data/VFB/OWL/CATMAID_import.owl 2000000
-
-# Every connectivity CLI now takes --site and writes <template>.provenance; the
-# chunked build reads it and stamps the version IRI (<Site>_import.owl) and dc:source
-# into the header, which the dashboard's owl_header probe reads back. For a one-shot
-# robot command instead, add the same stamp by hand, e.g.:
-#   annotate --ontology-iri http://virtualflybrain.org/data/VFB/OWL/CATMAID_import.owl \
-#            --version-iri http://virtualflybrain.org/data/VFB/OWL/male-cns_v1_0_import.owl \
-#            --annotation dc:source "male-cns:v1.0 (Site male-cns_v1_0)"
-#
-# BANC (see docs/BANC_connectivity_notes.md): ~5.5M rows, so chunked:
-#   python -m vfb_connectomics_import.connectivity.cli.banc --site BANC888 --output BANC_n2n.tsv
-#   ./chunked_n2n_build.sh BANC_n2n.tsv connectome_BANC_n2n.owl \
-#       http://virtualflybrain.org/data/VFB/OWL/BANC_import.owl 2000000

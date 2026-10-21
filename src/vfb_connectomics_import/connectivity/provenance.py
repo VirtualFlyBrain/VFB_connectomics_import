@@ -8,11 +8,11 @@ source release is recorded on that Site's `link_base`:
   * codex     — `data_version=888` (+ `dataset=banc`) -> CAVE / bucket materialization
   * CATMAID   — `https://<host>/?pid=<n>`      -> live server, no version
 
-so each build takes one argument, `--site`, and derives the rest here. The result is
-written next to the ROBOT template as `<template>.provenance`, and
-`data_owl/chunked_n2n_build.sh` stamps it into the OWL header (version IRI +
-dc:source) so the artifact records its release no matter what it is named. The
-import dashboard reads that header back (`owl_header` probe).
+so each build takes one argument, `--site`, and derives the rest here. The build
+stamps it into the OWL header it writes (version IRI + dc:source; owl_writer.py),
+so the artifact records its release no matter what it is named; for the legacy
+ROBOT-template output it is written alongside as `<template>.provenance`. The
+import dashboard reads the header back (`owl_header` probe).
 
 Parsing is kept free of network and heavy imports so it can be tested on its own.
 """
@@ -100,8 +100,9 @@ def site_provenance(nc, site, today=None):
 
 
 def write_provenance(template_path, prov):
-    """Write <template>.provenance (tab-separated KEY, VALUE lines) for
-    chunked_n2n_build.sh to stamp into the OWL header. Returns the path."""
+    """Write <template>.provenance (tab-separated KEY, VALUE lines) next to a legacy
+    ROBOT template, for whoever runs `robot template` on it to stamp into the OWL
+    header (annotate --version-iri / --annotation dc:source). Returns the path."""
     path = template_path + ".provenance"
     with open(path, "w") as fh:
         for key, value in (("SITE", prov.site), ("SOURCE", prov.source),

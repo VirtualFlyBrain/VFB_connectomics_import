@@ -96,7 +96,8 @@ What the batch showed that isn't in the rehearsal:
   `-2`). See "After the run".
 
 **Unit tests** — 62 across `test_images.py` and `test_sizing.py`, up from 25.
-`test_banc_query.py` needs `vfb_connect` and is skipped where that isn't installed. `tests/test_sizing.py` encodes the measured cases rather
+(The old `test_banc_query.py` was a script against the live KB, not a test; it is now
+`tools/banc_query_check.py`.) `tests/test_sizing.py` encodes the measured cases rather
 than assertions: the giant fibre that busts a budget its prediction met, the 370 f/µm² that
 the ceiling has to catch, and both of `decimate_mesh`'s old escape hatches.
 

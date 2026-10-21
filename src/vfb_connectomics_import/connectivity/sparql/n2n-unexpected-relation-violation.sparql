@@ -1,0 +1,15 @@
+# VIOLATION: a neuron in an n2n file asserts anything other than its type or
+# RO_0002120 (synapsed to), or a weighted axiom annotates another relation.
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX obo: <http://purl.obolibrary.org/obo/>
+PREFIX n2o: <http://neo2owl/custom/>
+SELECT DISTINCT ?s ?p WHERE {
+  { ?s ?p ?o . FILTER(STRSTARTS(STR(?s), "http://virtualflybrain.org/reports/"))
+    FILTER(?p NOT IN (rdf:type, obo:RO_0002120)) }
+  UNION
+  { ?ax a owl:Axiom ; owl:annotatedSource ?s ; owl:annotatedProperty ?p .
+    FILTER(?p != obo:RO_0002120) }
+}
