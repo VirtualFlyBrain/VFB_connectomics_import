@@ -1,7 +1,7 @@
 """ROBOT template TSV for FlyWire neuron-to-neuron connectivity.
 
     python -m vfb_connectomics_import.connectivity.cli.flywire --site flywire783 \\
-        --output connectome_flywire_fafb.tsv
+        --output connectome_flywire_fafb.owl
 
 The materialization (e.g. 783) is taken from the Site, so the edges and the release
 stamped into the OWL cannot disagree.
@@ -14,7 +14,7 @@ CAVE token is needed. `--source cave` queries CAVE through fafbseg instead (need
 CAVE token).
 """
 from vfb_connectomics_import.connectivity.cli._common import (
-    accessions_for_site, base_parser, load_pair_weights_file, write_template)
+    accessions_for_site, base_parser, load_pair_weights_file, write_output)
 from vfb_connectomics_import.connectivity.core import ConnectomicsImport
 
 # Published pair-level connectivity per FlyWire materialization
@@ -56,7 +56,7 @@ def main():
         conn_df = load_pair_weights_file(source, accessions, "pre_pt_root_id",
                                          "post_pt_root_id", "syn_count", args.threshold)
     print(f"{len(conn_df)} edges between VFB neurons")
-    write_template(ci, args.site, conn_df, args.output, prov)
+    write_output(ci, args.site, conn_df, args, prov)
 
 
 if __name__ == "__main__":

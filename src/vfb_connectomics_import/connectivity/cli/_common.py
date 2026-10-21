@@ -2,9 +2,13 @@
 
 Every build is driven by one VFB Site short_form (`--site`), the canonical version
 token. The source release (neuprint dataset, CAVE materialization, CATMAID server)
-is derived from that Site's link_base (see ../provenance.py), the neurons are the
-Site's cross-referenced individuals, and the ROBOT template is written together with
-a `<template>.provenance` file that chunked_n2n_build.sh stamps into the OWL header.
+is derived from that Site's link_base (see ../provenance.py) and the neurons are the
+Site's cross-referenced individuals.
+
+`--output X.owl` writes the OWL directly (../owl_writer.py), stamped with the
+release, and validates the complete file (../validate.py). `--output X.tsv` writes
+the old ROBOT template plus `<template>.provenance` instead — kept only for the
+release pipeline's CATMAID step until it moves to .owl output.
 """
 import argparse
 import os
@@ -31,7 +35,16 @@ def base_parser(description, default_site=None, site_required=None):
                    help="Keep connections with MORE than this many synapses "
                         "(default: 1, i.e. >= 2, the same for every connectome)")
     p.add_argument("--output", "-o", required=site_required,
-                   help="Output TSV path for the ROBOT template")
+                   help="Output path: X.owl writes and validates the OWL directly; "
+                        "X.tsv writes the legacy ROBOT template + .provenance")
+    p.add_argument("--ontology-iri", default=None,
+                   help="Ontology IRI for .owl output (default: "
+                        "http://virtualflybrain.org/data/VFB/OWL/<output file name>)")
+    p.add_argument("--previous", default=None,
+                   help="Previous artifact (.owl or .owl.gz) to diff the new one against "
+                        "(reported, not failed)")
+    p.add_argument("--no-robot", action="store_true",
+                   help="Skip the ROBOT sample parse + SPARQL shape checks")
     return p
 
 
@@ -46,6 +59,48 @@ def accessions_for_site(ci, site, dataset=None):
     return accessions
 
 
+def vfb_edges(ci, site, conn_df):
+    """conn_df (source, target, weight; source accessions) -> (pre, post, weight) as
+    VFB ids, via the Site's cross-references. Stops if any edge end does not map, or
+    maps to more than one individual."""
+    import pandas as pd
+    # cross-references with no accession cannot be an edge end; leave them out
+    mapping = {k: v for k, v in ci.vc.neo_query_wrapper.xref_2_vfb_id(db=site).items()
+               if k is not None}
+    ambiguous = sorted(k for k, v in mapping.items() if len({m["vfb_id"] for m in v}) > 1)
+    ids = {k: v[0]["vfb_id"] for k, v in mapping.items()}
+    pre = conn_df["source"].astype(str).map(ids)
+    post = conn_df["target"].astype(str).map(ids)
+    unmapped = int(pre.isna().sum() + post.isna().sum())
+    if unmapped:
+        sys.exit(f"ERROR: {unmapped} edge ends did not map to a VFB id via Site {site}")
+    used = set(conn_df["source"].astype(str)) | set(conn_df["target"].astype(str))
+    if any(a in used for a in ambiguous):
+        sys.exit(f"ERROR: accessions mapping to more than one VFB individual via Site {site}: "
+                 f"{[a for a in ambiguous if a in used][:5]}")
+    return pd.DataFrame({"pre": pre.values, "post": post.values,
+                         "weight": conn_df["weight"].astype("int64").values})
+
+
+def write_output(ci, site, conn_df, args, prov):
+    """--output .owl: write the OWL directly and validate it in full; .tsv: the
+    legacy ROBOT template + .provenance."""
+    if not args.output.endswith(".owl"):
+        return write_template(ci, site, conn_df, args.output, prov)
+    from vfb_connectomics_import.connectivity.owl_writer import OWL_BASE, write_n2n_owl
+    from vfb_connectomics_import.connectivity.validate import ValidationError, check
+    edges = vfb_edges(ci, site, conn_df)
+    iri = args.ontology_iri or OWL_BASE + os.path.basename(args.output)
+    n_ind, n_edges = write_n2n_owl(args.output, edges, iri, prov.version_iri, prov.dc_source)
+    print(f"OWL written to: {args.output} ({n_edges} edges, {n_ind} individuals; "
+          f"{prov.dc_source})")
+    try:
+        check(args.output, site=site, threshold=args.threshold, expected_edges=n_edges,
+              previous=args.previous, use_robot=not args.no_robot)
+    except ValidationError as e:
+        sys.exit(f"ERROR: {e}")
+
+
 def write_template(ci, site, conn_df, output, prov):
     """Write the ROBOT template and its .provenance; stop if any edge end did not
     map to a VFB id via the Site."""
@@ -58,7 +113,8 @@ def write_template(ci, site, conn_df, output, prov):
     prov_path = write_provenance(output, prov)
     print(f"ROBOT template written to: {output} ({len(template_df) - 1} edges)")
     print(f"Provenance written to: {prov_path} ({prov.dc_source})")
-    print("Build the OWL with data_owl/chunked_n2n_build.sh, which stamps it from that file.")
+    print("Legacy template output: build the OWL with robot template + annotate "
+          "--version-iri/--annotation dc:source from that file, or use --output X.owl.")
 
 
 def neuprint_token(path=None):

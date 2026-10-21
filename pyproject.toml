@@ -45,4 +45,4 @@ where = ["src"]
 dependencies = { file = ["requirements.txt"] }
 
 [tool.setuptools.package-data]
-"vfb_connectomics_import.connectivity" = ["data_owl/*", "data_tsv/*", "resources/*"]
+"vfb_connectomics_import.connectivity" = ["data_owl/*", "data_tsv/*", "resources/*", "sparql/*"]

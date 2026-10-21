@@ -42,10 +42,11 @@ For comparison, the v626 build had 1,898,631 edges (80,832 neurons, >= 3).
 
 ## Build
 
-### 1. ROBOT template
-
 ```bash
-python -m vfb_connectomics_import.connectivity.cli.banc --site BANC888 --output BANC_n2n.tsv
+python -m vfb_connectomics_import.connectivity.cli.banc --site BANC888 \
+    --output connectome_BANC_n2n.owl \
+    --previous src/vfb_connectomics_import/connectivity/data_owl/connectome_BANC_n2n.owl.gz
+gzip -9k connectome_BANC_n2n.owl
 ```
 
 `--site` (default `BANC888`) is the only release input: the BANC release (888) and the
@@ -53,28 +54,12 @@ bucket folder are derived from the Site's `link_base`, and the neurons are the S
 cross-referenced individuals. `--threshold 1` (>= 2) is the default;
 `--connectivity-file` takes a local copy or another URL. The parquet is streamed one row
 group at a time and cut down to VFB-to-VFB rows before summing, so memory stays modest.
-The script stops if any edge end fails to map to a VFB id via the Site, and writes
-`BANC_n2n.tsv.provenance` next to the template.
 
-### 2. OWL — chunked, stamped with the release
-
-Use the chunked build: ~5.5M rows needs far more heap than a single `robot template`
-(see `data_owl/ROBOT_terminal_commands.txt`). It reads `BANC_n2n.tsv.provenance` and
-stamps the header with the version IRI `.../BANC888_import.owl` and a `dc:source`, so the
-file records its release (README, "Artifact versions").
-
-```bash
-cd src/vfb_connectomics_import/connectivity/data_owl
-./chunked_n2n_build.sh BANC_n2n.tsv connectome_BANC_n2n.owl \
-    http://virtualflybrain.org/data/VFB/OWL/BANC_import.owl 2000000
-gzip -9k connectome_BANC_n2n.owl
-gunzip -t connectome_BANC_n2n.owl.gz
-```
-
-The script fails if the output axiom count differs from the template's row count. The
-ontology IRI stays `BANC_import.owl` (what the loader has always seen); the release is in
-the version IRI and `dc:source`. The v888 build of 2026-10-12 was stamped this way, by
-hand, before the provenance file existed: its header reads `BANC888_import.owl`.
+The OWL is written directly, with the version IRI `.../BANC888_import.owl` and a
+`dc:source` in its header, and the ontology IRI `BANC_import.owl` (what the loader has
+always seen). The build stops if any edge end fails to map to a VFB id via the Site, then
+validates the complete file and, with `--previous`, reports what changed against the last
+artifact (docs/CONNECTIVITY_BUILDS.md). No ROBOT or large Java heap is needed.
 
 ### 3. Publish
 
