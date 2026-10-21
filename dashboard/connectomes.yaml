@@ -13,6 +13,9 @@
 #
 # Probe types (see probes.py):
 #   owl_index        - matching OWL live on the VFB data server? (auto-discovers)
+#   owl_header       - as owl_index, then reads the file's header for the Site it
+#                      was built from (version IRI stamped by the build) and checks
+#                      it is the target Site; unstamped files are orange
 #   repo_glob        - matching artifact present in this repo?
 #   jenkins          - Jenkins job status (running -> in_progress, ok -> done)
 #   neuprint_upstream- newer version upstream? (needs NEUPRINT_TOKEN env)
@@ -27,10 +30,10 @@
 #                      not_started — i.e. claims nobody started. Needs KB creds.
 #   manual           - fixed state written here (WILL drift — avoid)
 #
-# `version` is the version being TARGETED. Add `built_version` when the artifacts
-# on the data server came from an OLDER version than the target (mid-migration) —
-# the update probes compare against built_version, so the cell stays honestly
-# orange instead of claiming parity with upstream. Omit it when they agree.
+# `version` is the version being TARGETED. n2n cells use owl_header, which reads
+# the release an uploaded file was built from out of the file itself, so they need
+# no hand-maintained record of it. `built_version` remains only for update probes
+# on cells whose artifacts cannot record their release; omit it otherwise.
 #
 # NOTE: the KB and PDB do not spell short_forms identically (the KB keeps the
 # neuPrint hyphen, e.g. `male-cns_v1_0`; PDB publishes `male_cns_v1_0`). Give
@@ -83,8 +86,8 @@ connectomes:
     version: "1.0"
     # TARGET version is v1.0. KB and PDB spell the Site differently (KB keeps the
     # neuPrint hyphen, PDB underscores it), so both names are given.
-    vfb_dataset: Berg2025a         # v1.0 DataSet. PDB still only has Berg2025 (v0.9)
-    vfb_site: male_cns_v1_0        # PDB spelling; PDB is still on male_cns_v0_9
+    vfb_dataset: Berg2025a         # v1.0 DataSet (live in PDB, checked 2026-10-15)
+    vfb_site: male_cns_v1_0        # PDB spelling; the Connectome / data source in PDB
     kb_site: male-cns_v1_0         # KB spelling; is_data_source already set here
     kb_dataset: Berg2025a
     neuprint_dataset: "male-cns"
@@ -99,7 +102,7 @@ connectomes:
       neurons: {fill: {type: kb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
       n2n:
-        fill:   {type: owl_index, match: 'connectome_malecns.*n2n\.owl'}
+        fill:   {type: owl_header, match: 'connectome_malecns.*n2n\.owl'}
         update: {type: neuprint_upstream}
         live:   {type: pdb_cypher}
       n2r:  {fill: {type: owl_index, match: 'connectome_malecns.*n2r\.owl'}, live: {type: pdb_cypher}}
@@ -118,7 +121,7 @@ connectomes:
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
       n2n:
-        fill:   {type: owl_index, match: 'connectome_manc\.owl'}
+        fill:   {type: owl_header, match: 'connectome_manc\.owl'}
         update: {type: neuprint_upstream}
         live:   {type: pdb_cypher}
       n2r:  {fill: {type: owl_index, match: 'connectome_manc.*n2r\.owl'}, live: {type: pdb_cypher}}
@@ -137,7 +140,7 @@ connectomes:
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
       n2n:
-        fill:   {type: owl_index, match: 'neuprint_JRC_Hemibrain.*connectomics\.owl'}
+        fill:   {type: owl_header, match: 'neuprint_JRC_Hemibrain.*connectomics\.owl'}
         update: {type: neuprint_upstream}
         live:   {type: pdb_cypher}
       n2r:  {fill: {type: repo_glob, match: 'src/vfb_connectomics_import/connectivity/data_tsv/*hb*n2r*'}, live: {type: pdb_cypher}}
@@ -156,7 +159,7 @@ connectomes:
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
       n2n:
-        fill:   {type: owl_index, match: 'connectome_jrc_ol\.owl'}
+        fill:   {type: owl_header, match: 'connectome_jrc_ol\.owl'}
         update: {type: neuprint_upstream}
         live:   {type: pdb_cypher}
       n2r:  {fill: {type: owl_index, match: 'connectome_jrc_ol.*n2r\.owl'}, live: {type: pdb_cypher}}
@@ -174,7 +177,7 @@ connectomes:
       dataset: {fill: {type: pdb_dataset}}
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: jenkins, job: ""}}
-      n2n:  {fill: {type: owl_index, match: 'connectome_flywire_fafb\.owl'}, live: {type: pdb_cypher}}
+      n2n:  {fill: {type: owl_header, match: 'connectome_flywire_fafb\.owl'}, live: {type: pdb_cypher}}
       n2r:  {fill: {type: owl_index, match: 'connectome_flywire.*n2r\.owl'}, live: {type: pdb_cypher}}
       types: {fill: {type: manual, state: not_started}}
 
@@ -187,8 +190,6 @@ connectomes:
     # neurons whose root ids survived from v626 carry any. KB and PDB spell BANC
     # short_forms identically, so no kb_* overrides.
     version: "888"
-    # No built_version: the n2n artifact now carries its release in the filename, so
-    # owl_index below only matches a v888 build (see VERSIONING / README naming rule).
     vfb_dataset: Bates2026         # v626 was Bates2025; 15,779 of its neurons are dropped in v888
     vfb_site: BANC888
     runner: src/vfb_connectomics_import/connectivity/cli/banc.py
@@ -201,11 +202,10 @@ connectomes:
       # First full brain run started 2026-08-27. --region vnc is the other half.
       skel:    {fill: {type: jenkins, job: "load-banc-neurons"}}
       n2n:
-        # Matches only the versioned v888 build (connectome_BANC888_n2n.owl, see
-        # docs/BANC_connectivity_notes.md), so the cell stays grey until that file is
-        # on the data server and turns green by itself once it is — the old
-        # unversioned v626 connectome_BANC_n2n.owl no longer counts.
-        fill:   {type: owl_index, match: 'connectome_BANC888_n2n\.owl'}
+        # owl_header reads the Site the uploaded file was built from: green once the
+        # v888 build (stamped BANC888, docs/BANC_connectivity_notes.md) is on the data
+        # server; the current unstamped v626 file shows orange.
+        fill:   {type: owl_header, match: 'connectome_BANC_n2n\.owl'}
         update: {type: gcs_versions, bucket: lee-lab_brain-and-nerve-cord-fly-connectome, prefix: 'neuron_connectivity/', pattern: 'v(\d+)'}
         live:   {type: pdb_cypher}
       n2r:  {fill: {type: manual, state: not_started}}
@@ -222,7 +222,7 @@ connectomes:
       dataset: {fill: {type: pdb_dataset}}
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: manual, state: not_started}}
-      n2n:  {fill: {type: owl_index, match: 'FAFB_CATMAID_import\.owl'}, live: {type: pdb_cypher}}
+      n2n:  {fill: {type: owl_header, match: 'FAFB_CATMAID_import\.owl'}, live: {type: pdb_cypher}}
       n2r:  {fill: {type: manual, state: not_started}}
       types: {fill: {type: manual, state: not_started}}
 
@@ -237,6 +237,6 @@ connectomes:
       dataset: {fill: {type: pdb_dataset}}
       neurons: {fill: {type: pdb_cypher, expect: exists}, live: {type: pdb_cypher}}
       skel:    {fill: {type: manual, state: not_started}}
-      n2n:  {fill: {type: owl_index, match: 'L1EM_CATMAID_import\.owl'}, live: {type: pdb_cypher}}
+      n2n:  {fill: {type: owl_header, match: 'L1EM_CATMAID_import\.owl'}, live: {type: pdb_cypher}}
       n2r:  {fill: {type: manual, state: not_started}}
       types: {fill: {type: manual, state: not_started}}

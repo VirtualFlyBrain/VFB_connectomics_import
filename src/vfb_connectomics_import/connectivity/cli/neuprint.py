@@ -1,52 +1,38 @@
+"""ROBOT template TSV for a neuprint connectome's neuron-to-neuron connectivity.
+
+    python -m vfb_connectomics_import.connectivity.cli.neuprint --site male-cns_v1_0 \\
+        --output connectome_malecns_n2n.tsv
+
+The neuprint dataset (e.g. male-cns:v1.0) is taken from the Site, so the edges and
+the release stamped into the OWL cannot disagree. The token comes from
+$NEUPRINT_TOKEN or ~/neuprint_token.txt.
+"""
+from vfb_connectomics_import.connectivity.cli._common import (
+    accessions_for_site, base_parser, neuprint_token, write_template)
 from vfb_connectomics_import.connectivity.core import ConnectomicsImport
-import argparse
-import sys
 
-#Setup arguments for argparse to allow input of ds, doi and filepaths in terminal
-parser = argparse.ArgumentParser(description='Script accepts a VFB dataset name and external database login details (neuprint/CATMAID (only neuprint currently)) and returns the neuron-neuron connectivity between the neurons in the dataset. A threshold can be set to filter out connections at or below the threshold (default=1).')
-parser.add_argument('--neuprint_endpoint', '-n_e', type=str, help='NeuPrint endpoint URL string')#just enpoint for catmaid check for optional
-parser.add_argument('--neuprint_dataset', '-n_d', type=str, help='NeuPrint dataset string')
-parser.add_argument('--neuprint_token', '-n_t', type=str, help='NeuPrint auth token string')
-parser.add_argument('--threshold', '-t', type=int, help='Neuron-neuron connections which are not greater than this integer will be omitted')
-parser.add_argument('--dataset', '-d', type=str, help='VFB dataset string')
-parser.add_argument('--output_file', '-o', type=str, help='output filepath')
-#add catmaid/neuprint as arg
-args = vars(parser.parse_args())
 
-#asign args to variables
-neuprint_endpoint = args['neuprint_endpoint']
-neuprint_dataset = args['neuprint_dataset']
-neuprint_token = args['neuprint_token']
-threshold = args['threshold']
-dataset = args['dataset']
-output_file = args['output_file']
+def main():
+    parser = base_parser("Generate ROBOT template TSV for neuprint connectivity data")
+    parser.add_argument("--neuprint_endpoint", default="https://neuprint.janelia.org",
+                        help="neuprint server (default: https://neuprint.janelia.org)")
+    parser.add_argument("--neuprint_token_file", default=None,
+                        help="File holding the neuprint token (default: $NEUPRINT_TOKEN, "
+                             "then ~/neuprint_token.txt)")
+    args = parser.parse_args()
 
-neuprint_endpoint = 'https://neuprint.janelia.org'
-neuprint_dataset = 'male-cns:v1.0'
-neuprint_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbTcxQGNhbS5hYy51ayIsImxldmVsIjoibm9hdXRoIiwiaW1hZ2UtdXJsIjoiaHR0cHM6Ly9saDMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL2EvQUNnOG9jTFhRZzltNUpUWjVibmdjRl9lSXROa1cxQUtVcU5IWmpfVENJWXl1VnZwT19mUHJBPXM5Ni1jP3N6PTUwP3N6PTUwIiwiZXhwIjoxOTAxNjQ3MDMwfQ.bqzIwWAGNEcrpvaRX_M-U33d46xfTK7XxVKhz6P6BqQ'
-threshold = 1
-dataset = 'Berg2025a'
-output_file = 'Berg2025a_n_2_n.tsv'
-db='male-cns_v1_0'
+    ci = ConnectomicsImport()
+    prov = ci.site_provenance(args.site)
+    if prov.kind != "neuprint":
+        parser.error(f"Site {args.site} is a {prov.kind} source, not neuprint")
+    print(f"Site {args.site} -> neuprint dataset {prov.neuprint_dataset}")
+    ci.connect_neuprint(args.neuprint_endpoint, prov.neuprint_dataset,
+                        neuprint_token(args.neuprint_token_file))
 
-ci=ConnectomicsImport(neuprint_endpoint=neuprint_endpoint,
-                      neuprint_dataset=neuprint_dataset,
-                      neuprint_token=neuprint_token)
+    accessions = accessions_for_site(ci, args.site, args.dataset)
+    conn_df = ci.get_adjacencies_neuprint(accessions=accessions, threshold=args.threshold)
+    write_template(ci, args.site, conn_df, args.output, prov)
 
-accessions=ci.get_accessions_from_vfb(dataset, db)
 
-# Check if any accessions were found
-if not accessions:
-    print(f"ERROR: No neuron accessions found for dataset '{dataset}'. Cannot proceed with connectivity import.")
-    print("Please verify that:")
-    print("  1. The dataset name is correct")
-    print("  2. The dataset exists in the VFB knowledge base")
-    print("  3. Neurons in the dataset have NeuPrint cross-references")
-    sys.exit(1)
-
-conn_df=ci.get_adjacencies_neuprint(accessions=accessions, threshold=threshold)
-
-robot_template_df=ci.generate_n_n_template(db, conn_df)
-
-robot_template_df.to_csv(output_file, sep='\t', index=False)
-
+if __name__ == "__main__":
+    main()

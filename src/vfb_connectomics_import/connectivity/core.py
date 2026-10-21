@@ -15,19 +15,31 @@ if sys.version_info < (3, 10):
 import pandas as pd
 from vfb_connect.cross_server_tools import VfbConnect
 from fafbseg import flywire
-from caveclient import CAVEclient
 
 class ConnectomicsImport:
     def __init__(self, neuprint_endpoint=None, neuprint_dataset=None, neuprint_token=None, catmaid_endpoint=None):
+        self.neuprint_client = None
         if neuprint_endpoint and neuprint_dataset and neuprint_token:
-            import neuprint
-            self.neuprint_client=neuprint.Client(neuprint_endpoint, dataset=neuprint_dataset, token=neuprint_token)
+            self.connect_neuprint(neuprint_endpoint, neuprint_dataset, neuprint_token)
         elif catmaid_endpoint:
-            import pymaid
-            self.rm=pymaid.CatmaidInstance(catmaid_endpoint, '', '', '')
-            #no self?
-        else: self.neuprint_client=None
+            self.connect_catmaid(catmaid_endpoint)
         self.vc = VfbConnect(neo_endpoint="http://kb.virtualflybrain.org")
+
+    # The source connection is separate from construction because the CLIs only
+    # learn which neuprint dataset / CATMAID server to use from the Site's
+    # provenance, which needs the KB connection made above (see provenance.py).
+    def connect_neuprint(self, endpoint, dataset, token):
+        import neuprint
+        self.neuprint_client = neuprint.Client(endpoint, dataset=dataset, token=token)
+
+    def connect_catmaid(self, endpoint):
+        import pymaid
+        self.rm = pymaid.CatmaidInstance(endpoint, '', '', '')
+
+    def site_provenance(self, site):
+        """Which source release a Site is (see provenance.py)."""
+        from vfb_connectomics_import.connectivity.provenance import site_provenance
+        return site_provenance(self.vc.nc, site)
 
     def get_accessions_from_vfb(self, dataset=None, db=None):
         """
@@ -135,7 +147,9 @@ class ConnectomicsImport:
     #     conn_df = conn_df[conn_df.weight > threshold]
     #     return conn_df
 
-    def get_adjacencies_flywire(self, accessions, threshold=0, batchsize=1000, dataset='public', materialization=783):
+    def get_adjacencies_flywire(self, accessions, materialization, threshold=0, batchsize=1000, dataset='public'):
+        # materialization has no default: it must come from the Site being built
+        # (provenance.py), so the edges and the stamped release cannot disagree.
         conn_df=pd.DataFrame()
         batchsize = batchsize # batching allows filtering to be applied periodically so that the df isn't clogged with irrelevant connectivity
         for i in range(0, len(accessions), batchsize): #should probably print overall progress as well.
@@ -144,44 +158,6 @@ class ConnectomicsImport:
             batch_df = batch_df[batch_df['post'].isin(accessions)][batch_df.weight > threshold] #filter out connections below threshold + only need connections to downstream partners which exist in vfb
             conn_df=pd.concat([conn_df, batch_df]) #add batch to main conn_df
         conn_df.rename(columns={'pre': 'source', 'post': 'target'}, inplace=True)
-        return conn_df
-
-    def get_adjacencies_banc(self, accessions, threshold=0, batchsize=5000, materialization=626):
-        """Get connectivity data from BANC dataset using CAVE ."""
-        # Initialize CAVE client for BANC
-        client = CAVEclient('brain_and_nerve_cord')
-        client.materialize.version = materialization
-        
-        conn_df = pd.DataFrame()
-        accessions_set = set(accessions)
-        
-        # Process in batches
-        for i in range(0, len(accessions), batchsize):
-            batch = accessions[i:i + batchsize]
-            print(f"Processing batch {i//batchsize + 1}/{(len(accessions) + batchsize - 1)//batchsize}")
-            
-            # Query synapses where batch neurons are presynaptic
-            try:
-                synapse_df = client.materialize.synapse_query(pre_ids=batch)
-                
-                if len(synapse_df) > 0:
-                    # Filter to only include connections where post-synaptic partner is also in our accessions
-                    synapse_df = synapse_df[synapse_df['post_pt_root_id'].isin(accessions_set)]
-                    
-                    # Group by pre/post to get connection weights (synapse counts)
-                    batch_df = synapse_df.groupby(['pre_pt_root_id', 'post_pt_root_id']).size().reset_index(name='weight')
-                    
-                    # Filter by threshold
-                    batch_df = batch_df[batch_df['weight'] > threshold]
-                    
-                    # Rename columns to match expected format
-                    batch_df.rename(columns={'pre_pt_root_id': 'source', 'post_pt_root_id': 'target'}, inplace=True)
-                    
-                    conn_df = pd.concat([conn_df, batch_df], ignore_index=True)
-            except Exception as e:
-                print(f"Error processing batch starting at {i}: {e}")
-                continue
-        
         return conn_df
 
     def generate_n_n_template(self, db, conn_df):
