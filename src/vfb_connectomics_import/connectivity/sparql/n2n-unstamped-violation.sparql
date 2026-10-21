@@ -1,0 +1,16 @@
+# VIOLATION: the ontology does not record its source release: no version IRI of the
+# form http://virtualflybrain.org/data/VFB/OWL/<Site>_import.owl, or no dc:source.
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX obo: <http://purl.obolibrary.org/obo/>
+PREFIX n2o: <http://neo2owl/custom/>
+SELECT ?ont ?missing WHERE {
+  ?ont a owl:Ontology .
+  { FILTER NOT EXISTS { ?ont owl:versionIRI ?v .
+      FILTER(REGEX(STR(?v), "^http://virtualflybrain[.]org/data/VFB/OWL/[A-Za-z0-9_.-]+_import[.]owl$")) }
+    BIND("version IRI" AS ?missing) }
+  UNION
+  { FILTER NOT EXISTS { ?ont dcterms:source ?src } BIND("dc:source" AS ?missing) }
+}

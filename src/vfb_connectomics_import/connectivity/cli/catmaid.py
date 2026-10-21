@@ -1,7 +1,7 @@
 """ROBOT template TSV for neuron-to-neuron connectivity from a VFB-hosted CATMAID server.
 
     python -m vfb_connectomics_import.connectivity.cli.catmaid --site catmaid_l1em \\
-        --output L1EM_CATMAID_import.tsv
+        --output L1EM_CATMAID_import.owl
 
 The CATMAID server is taken from the Site. A live server has no release, so the
 provenance records the Site and the build date.
@@ -20,7 +20,7 @@ if sys.version_info < (3, 10):
     )
 
 from vfb_connectomics_import.connectivity.cli._common import (  # noqa: E402
-    accessions_for_site, base_parser, write_template)
+    accessions_for_site, base_parser, write_output)
 from vfb_connectomics_import.connectivity.core import ConnectomicsImport  # noqa: E402
 
 
@@ -54,7 +54,7 @@ def main():
     # A CATMAID Site spans many VFB datasets, so neurons are selected by Site.
     accessions = accessions_for_site(ci, args.site, args.dataset)
     conn_df = ci.get_adjacencies_CATMAID(accessions, threshold=args.threshold)
-    write_template(ci, args.site, conn_df, args.output, prov)
+    write_output(ci, args.site, conn_df, args, prov)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """Generate the ROBOT template TSV for BANC neuron-to-neuron connectivity.
 
     python -m vfb_connectomics_import.connectivity.cli.banc --site BANC888 \\
-        --output connectome_BANC_n2n.tsv
+        --output connectome_BANC_n2n.owl
 
 The release (e.g. 888) is taken from the Site, and selects the bucket folder.
 Edges come from BANC's per-neuropil connection counts for that release
@@ -24,7 +24,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from vfb_connectomics_import.connectivity.cli._common import (
-    accessions_for_site, base_parser, write_template)
+    accessions_for_site, base_parser, write_output)
 from vfb_connectomics_import.connectivity.core import ConnectomicsImport
 
 BUCKET = "https://storage.googleapis.com/lee-lab_brain-and-nerve-cord-fly-connectome"
@@ -61,6 +61,8 @@ def main():
     parser.add_argument("--connectivity-file", type=str, default=None,
                         help="Local path or URL of the per-neuropil connection counts parquet "
                              "(default: the Site's release folder in the public BANC bucket)")
+    # BANC's OWL has always had this ontology IRI; keep it for continuity
+    parser.set_defaults(ontology_iri="http://virtualflybrain.org/data/VFB/OWL/BANC_import.owl")
     args = parser.parse_args()
 
     ci = ConnectomicsImport()
@@ -79,7 +81,7 @@ def main():
     conn_df = conn_df[conn_df["weight"] > args.threshold]
     print(f"After threshold > {args.threshold}: {len(conn_df)} edges "
           f"({int(conn_df['weight'].sum()) if len(conn_df) else 0} synapses)")
-    write_template(ci, args.site, conn_df, args.output, prov)
+    write_output(ci, args.site, conn_df, args, prov)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,12 @@
+# VIOLATION: a synapsed-to edge with no weight annotation.
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX obo: <http://purl.obolibrary.org/obo/>
+PREFIX n2o: <http://neo2owl/custom/>
+SELECT ?s ?o WHERE {
+  ?s obo:RO_0002120 ?o .
+  FILTER NOT EXISTS { ?ax a owl:Axiom ; owl:annotatedSource ?s ; owl:annotatedProperty obo:RO_0002120 ;
+                          owl:annotatedTarget ?o ; n2o:weight ?w . }
+}

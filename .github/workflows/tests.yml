@@ -1,0 +1,28 @@
+name: Tests
+
+# Unit tests, the n2n OWL writer/validator tests, and the ROBOT equivalence and
+# SPARQL shape checks (tests/test_robot_equivalence.py). Runs in the ODK image so
+# ROBOT is available; needs no network, KB or tokens. The committed artifacts are
+# validated at build time (connectivity/validate.py), not here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    container: obolibrary/odkfull:latest
+    env:
+      ROBOT_JAVA_ARGS: -Xmx4G
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          pip install --break-system-packages -r requirements.txt pytest
+          pip install --break-system-packages -e . --no-deps
+      - name: ROBOT is available (the equivalence tests must not be skipped)
+        run: robot --version
+      - name: Run tests
+        run: python3 -m pytest -q -rs tests

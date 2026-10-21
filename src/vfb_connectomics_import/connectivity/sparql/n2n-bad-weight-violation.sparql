@@ -1,0 +1,12 @@
+# VIOLATION: a weight that is not a positive xsd:integer, or an edge with two weights.
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX obo: <http://purl.obolibrary.org/obo/>
+PREFIX n2o: <http://neo2owl/custom/>
+SELECT DISTINCT ?ax ?w WHERE {
+  { ?ax n2o:weight ?w . FILTER(DATATYPE(?w) != xsd:integer || ?w < 1) }
+  UNION
+  { ?ax n2o:weight ?w , ?w2 . FILTER(?w != ?w2) }
+}

@@ -180,9 +180,14 @@ How it is applied:
   or, for a live CATMAID server, the build date. Nothing about the release is
   hard-coded or passed separately, so the edges and the recorded release cannot
   disagree.
-- **The build writes `<template>.provenance`** next to the ROBOT template, and
-  `data_owl/chunked_n2n_build.sh` stamps it into the OWL header automatically (it
-  warns if there is none).
+- **The build writes the OWL itself** (`connectivity/owl_writer.py`), with the stamp
+  in its header, and **validates the complete file** before accepting it
+  (`connectivity/validate.py`): a full streaming check of every line, an OWLAPI parse
+  plus SPARQL shape checks on a sample, and, with `--previous`, a diff against the
+  last artifact. CI (`.github/workflows/tests.yml`) checks the writer against ROBOT
+  (`robot diff` must report identical ontologies) and that the checks reject
+  malformed files. The ROBOT-template route remains only as `--output X.tsv`, for the
+  release pipeline's CATMAID step.
 - **The import dashboard reads it back** (`owl_header` probe): it range-requests the
   first 64 kB of the uploaded file and compares the stamped Site with the target.
 
@@ -197,8 +202,7 @@ after its newest input).
 
 ## Tech spec 
 
-* Python code will generate Robot templates which can then be used to generate OWL for loading into the triple store. 
-* An additional MakeFile will drive generation of OWL using ROBOT (including setting OWL file IRI)
+* Python code generates the connectivity OWL directly (`connectivity/owl_writer.py`), checked against ROBOT's output in CI and validated in full on every build (`connectivity/validate.py`); see `docs/CONNECTIVITY_BUILDS.md`.
 * The relevant neurons and their identifiers will be found using VFB_connect to query VFB to generate simple lookups for converting between VFB IDs and external IDs
 * Connectomic reports from external sites may be generated as Pandas tables, allowing efficient column based methods to be used for ID conversion.
 

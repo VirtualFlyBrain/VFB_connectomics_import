@@ -1,0 +1,12 @@
+# VIOLATION: an edge end that is not a well-formed VFB individual IRI (e.g. the empty
+# http://virtualflybrain.org/reports/VFB_ the old FlyWire build produced).
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX obo: <http://purl.obolibrary.org/obo/>
+PREFIX n2o: <http://neo2owl/custom/>
+SELECT DISTINCT ?x WHERE {
+  { ?x obo:RO_0002120 ?o } UNION { ?s obo:RO_0002120 ?x }
+  FILTER(!REGEX(STR(?x), "^http://virtualflybrain[.]org/reports/VFB_[0-9a-z]+$"))
+}
