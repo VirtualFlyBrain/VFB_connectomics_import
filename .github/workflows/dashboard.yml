@@ -58,8 +58,9 @@ jobs:
           # All optional. Any absent secret makes its probe degrade to "unknown"
           # rather than fail, so forks (which never receive secrets) still build.
           #
-          # Enables the "needs update" upstream check for neuPrint.
-          NEUPRINT_TOKEN: ${{ secrets.NEUPRINT_TOKEN }}
+          # Enables the "needs update" upstream check for neuPrint. NEUPRINTAUTHTOKEN is the
+          # VirtualFlyBrain organisation secret.
+          NEUPRINT_TOKEN: ${{ secrets.NEUPRINTAUTHTOKEN }}
           # Enables KB probes ("authored in KB" vs "released in PDB"). The KB
           # wants HTTP Basic. Use a READ-ONLY account: probes.py refuses to send
           # write Cypher, but that guard should not be the only thing stopping it.

@@ -203,9 +203,9 @@ release exists upstream before VFB has loaded it.
 
 ## Security note
 
-`NEUPRINT_TOKEN` must be a GitHub **repo secret**, never committed. (The import
-scripts under `src/` currently contain hardcoded neuPrint tokens — those should be
-rotated and moved to env vars / secrets.)
+The workflow passes the VirtualFlyBrain organisation secret `NEUPRINTAUTHTOKEN` to
+the probes as `NEUPRINT_TOKEN`; never commit a token. Scripts under `src/` read
+`$NEUPRINT_TOKEN`, else `~/neuprint_token.txt`.
 
 **TLS.** `probes.py` verifies certificates against certifi's CA bundle, falling
 back to an *unverified* connection only when the local trust store can't validate
