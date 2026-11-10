@@ -3,7 +3,9 @@ from neuprint import Client, fetch_custom_neurons
 import pandas as pd
 import navis
 import navis.interfaces.neuprint as neu
-c = Client('neuprint.janelia.org', dataset='manc:v1.0', token='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbTcxQGNhbS5hYy51ayIsImxldmVsIjoibm9hdXRoIiwiaW1hZ2UtdXJsIjoiaHR0cHM6Ly9saDMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL2EvQUFjSFR0ZnhLRU5vLTRTQ0JBNWx2T194S3FLQjlTU09YRkVwU0RuVU1QLWFKcXpqPXM5Ni1jP3N6PTUwP3N6PTUwIiwiZXhwIjoxODczNTczMDI4fQ.Wp2D7KmnVlg01S8k2U7mMv5-L0vMr3VzJVIHZef7TE0')
+from vfb_connectomics_import.connectivity.cli._common import neuprint_token
+# token from $NEUPRINT_TOKEN, else ~/neuprint_token.txt (never commit it)
+c = Client('neuprint.janelia.org', dataset='manc:v1.0', token=neuprint_token())
 import flybrains
 
 class neuprint_curation:
