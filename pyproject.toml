@@ -16,7 +16,7 @@ dynamic = ["dependencies"]
 # everything would fail on a job that does not need any of it.
 images = [
     "navis", "flybrains>=0.6.3", "trimesh", "shapely", "scipy", "numpy",
-    "cloud-volume", "skeletor", "pynrrd", "plotly", "certifi",
+    "cloud-volume<12.16", "skeletor", "pynrrd", "plotly", "certifi",
     # Exact pin — see the note in requirements.txt. 0.1.13 and 0.2.0 both claim 3.9
     # support but ship no cp39 wheel and have 3.10-only source.
     "fast-simplification==0.1.12",
