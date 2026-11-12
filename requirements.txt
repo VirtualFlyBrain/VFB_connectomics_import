@@ -31,7 +31,10 @@ trimesh               # mesh IO and plane slicing
 fast-simplification==0.1.12
 shapely               # required by trimesh.slice_plane, even with cap=False
 scipy                 # map_coordinates for the baked-field lookup
-cloud-volume          # BANC precomputed mesh fetch
+# cloud-volume 12.16.0 and 12.16.1 import `crackle` unconditionally (frontends/graphene.py) but only
+# list crackle-codec as an optional extra, so `import cloudvolume` (and fafbseg, which imports it)
+# fails with ModuleNotFoundError. Capped 2026-11-12; lift once a release imports cleanly without extras.
+cloud-volume<12.16    # BANC precomputed mesh fetch
 skeletor              # skeletonise the mesh for the 40.7% of roots with no published _skeleton
 pynrrd                # NRRD output for the VFB stack viewer
 numpy                 # pulled in by navis anyway, but imported directly throughout
